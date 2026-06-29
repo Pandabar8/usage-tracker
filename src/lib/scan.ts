@@ -32,17 +32,25 @@ export function scan(
   let codexQuota: RateLimitSnapshot | null = null;
 
   for (const file of listJsonlFiles(claudeDir)) {
-    records.push(...parseFileCached(file, parseClaudeFile).records);
+    try {
+      records.push(...parseFileCached(file, parseClaudeFile).records);
+    } catch {
+      // file vanished or became unreadable between enumeration and parse; skip it
+    }
   }
 
   for (const file of listJsonlFiles(codexDir)) {
-    const parsed = parseFileCached(file, parseCodexFile);
-    records.push(...parsed.records);
-    if (
-      parsed.quota &&
-      (!codexQuota || parsed.quota.timestamp > codexQuota.timestamp)
-    ) {
-      codexQuota = parsed.quota;
+    try {
+      const parsed = parseFileCached(file, parseCodexFile);
+      records.push(...parsed.records);
+      if (
+        parsed.quota &&
+        (!codexQuota || parsed.quota.timestamp > codexQuota.timestamp)
+      ) {
+        codexQuota = parsed.quota;
+      }
+    } catch {
+      // file vanished or became unreadable between enumeration and parse; skip it
     }
   }
 

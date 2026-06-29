@@ -92,6 +92,19 @@ describe("scan", () => {
     });
     expect(records).toEqual([]);
   });
+
+  it("skips a file that fails to read and still returns records from valid files", () => {
+    // Valid claude record alongside a directory named bad.jsonl.
+    // listJsonlFiles picks up the directory path; readFileSync on a directory
+    // throws EISDIR, exercising the per-file try/catch in scan().
+    mkdirSync(join(claudeDir, "proj"), { recursive: true });
+    writeFileSync(join(claudeDir, "proj", "good.jsonl"), claudeLine);
+    mkdirSync(join(claudeDir, "proj", "bad.jsonl"), { recursive: true });
+
+    const { records } = scan({ claudeDir, codexDir });
+    expect(records).toHaveLength(1);
+    expect(records[0].tool).toBe("claude");
+  });
 });
 
 describe("parseFileCached", () => {
