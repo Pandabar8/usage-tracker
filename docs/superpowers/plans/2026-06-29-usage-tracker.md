@@ -16,6 +16,7 @@
 - All `src/lib/` modules are pure and import nothing from `astro`. Only `src/pages/**` and `src/components/**` may use Astro/React.
 - No emojis anywhere in code, comments, or UI. If an icon is needed, use an inline SVG.
 - No attribution or tool-process mentions in code, comments, or commit messages. Commit messages describe the change and its product reason only; use Conventional Commits (`feat:`, `test:`, `chore:`, `docs:`).
+- Test fixtures must be **synthetic** (hand-authored lines with made-up paths and numbers). Never commit trimmed real `~/.claude` or `~/.codex` content. The app reads the real home directories only at runtime and never uploads anything.
 - Token-accounting rules (apply in every parser/aggregate task):
   - `inputTokens` = **fresh (uncached) input**. Claude: `usage.input_tokens` (already uncached). Codex: `input_tokens − cached_input_tokens`.
   - `cacheReadTokens`. Claude: `usage.cache_read_input_tokens`. Codex: `cached_input_tokens`.
@@ -666,13 +667,15 @@ git commit -m "feat(lib): parse Claude Code transcripts into usage records"
 
 **Files:**
 
-- Create: `src/lib/parsers/codex.ts`, `src/lib/parsers/__fixtures__/codex-sample.jsonl`
+- Create: `src/lib/parsers/codex.ts`, `src/lib/parsers/__fixtures__/codex-sample.jsonl`, `src/lib/parsers/__fixtures__/codex-edge.jsonl`
 - Test: `src/lib/parsers/codex.test.ts`
 
 **Interfaces:**
 
 - Consumes: `UsageRecord`, `ParsedFile`, `RateLimitSnapshot`, `projectFromCwd`, `totalTokens` from `normalize.ts`.
-- Produces: `parseCodexFile(path: string): ParsedFile` — one `UsageRecord` per `token_count` event whose `info.last_token_usage` is present; `quota` is the latest `rate_limits` snapshot in the file (or `null`). Tracks current model from `turn_context` and cwd from `session_meta`/`turn_context`.
+- Produces: `parseCodexFile(path: string): ParsedFile` — one `UsageRecord` per **forward step in the cumulative `info.total_token_usage`** (each record is the delta from the previous cumulative snapshot; zero-delta / duplicate snapshots are skipped; `last_token_usage` is NOT used). `quota` is the latest `rate_limits` snapshot in the file (or `null`). Tracks current model from `turn_context` and cwd from `session_meta`/`turn_context`.
+
+> **Why cumulative deltas, not `last_token_usage` (Codex gate, BLOCK #1):** summing `last_token_usage` over-counts if Codex emits duplicate `token_count` snapshots (e.g. one per tool call within a turn). Differencing the monotonic cumulative `total_token_usage` is robust to duplicates and still yields per-event, event-time records. If the cumulative ever goes backwards (counter/session reset), the current snapshot is taken as the delta baseline.
 
 - [ ] **Step 1: Create the fixture**
 
@@ -684,9 +687,21 @@ git commit -m "feat(lib): parse Claude Code transcripts into usage records"
 {"timestamp":"2026-06-02T09:10:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"cached_input_tokens":1000,"output_tokens":150,"reasoning_output_tokens":50,"total_tokens":1650},"last_token_usage":{"input_tokens":500,"cached_input_tokens":200,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":550},"model_context_window":258400},"rate_limits":{"primary":{"used_percent":30,"window_minutes":300,"resets_at":1000},"secondary":{"used_percent":7,"window_minutes":10080,"resets_at":2000}}}}
 ```
 
-> Canonical anchors: the final `total_token_usage.total_tokens` is **1650**. The two emitted records (events 4 and 5; event 3 has `info: null`) carry `last_token_usage.total_tokens` of 1100 and 550, which sum to 1650 — the double-count guard.
-> Record 1: fresh input `1000 − 800 = 200`, cacheRead `800`, output `100`, reasoning `40` → `totalTokens = 1100`.
-> Record 2: fresh input `500 − 200 = 300`, cacheRead `200`, output `50`, reasoning `10` → `totalTokens = 550`.
+> Canonical anchors (`codex-sample.jsonl`): the final cumulative `total_token_usage.total_tokens` is **1650**. Records are derived from cumulative `total_token_usage` deltas (event 3 has `info: null` → skipped). The two record `totalTokens` (1100, 550) sum to the final cumulative 1650 — the accounting guard.
+> Record 1: delta from 0 → fresh input `1000 − 800 = 200`, cacheRead `800`, output `100`, reasoning `40` → `totalTokens = 1100`.
+> Record 2: delta input `1500 − 1000 = 500`, delta cached `1000 − 800 = 200` → fresh `500 − 200 = 300`, cacheRead `200`, output `150 − 100 = 50`, reasoning `50 − 40 = 10` → `totalTokens = 550`. (For this clean fixture the deltas equal `last_token_usage`; the edge fixture below shows where they differ.)
+
+Also create the edge fixture `src/lib/parsers/__fixtures__/codex-edge.jsonl` — a duplicate snapshot plus a cumulative-only event with **no** `last_token_usage`:
+
+```jsonl
+{"timestamp":"2026-06-03T09:00:00.000Z","type":"session_meta","payload":{"id":"c2","cwd":"/Users/me/ProjC"}}
+{"timestamp":"2026-06-03T09:00:00.500Z","type":"turn_context","payload":{"cwd":"/Users/me/ProjC","model":"gpt-5.3-codex"}}
+{"timestamp":"2026-06-03T09:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}},"rate_limits":{"primary":{"used_percent":4,"window_minutes":300,"resets_at":1},"secondary":{"used_percent":1,"window_minutes":10080,"resets_at":2}}}}
+{"timestamp":"2026-06-03T09:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}},"rate_limits":{"primary":{"used_percent":4,"window_minutes":300,"resets_at":1},"secondary":{"used_percent":1,"window_minutes":10080,"resets_at":2}}}}
+{"timestamp":"2026-06-03T09:03:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":300,"cached_input_tokens":50,"output_tokens":30,"reasoning_output_tokens":5,"total_tokens":330}},"rate_limits":{"primary":{"used_percent":6,"window_minutes":300,"resets_at":1},"secondary":{"used_percent":2,"window_minutes":10080,"resets_at":2}}}}
+```
+
+> Edge anchors (`codex-edge.jsonl`): none of these events carry `last_token_usage`, proving the parser depends only on cumulative `total_token_usage`. 09:01 advances 0 → 110 (record: fresh 100, cacheRead 0, output 10). 09:02 repeats the same cumulative (delta 0) and is **skipped** (no double-count). 09:03 advances 110 → 330 (delta input 200, cached 50, output 20, reasoning 5 → fresh 150, cacheRead 50, output 20). Two records; their `totalTokens` (110, 220) sum to the final cumulative **330**.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -697,13 +712,16 @@ import { fileURLToPath } from "node:url";
 import { parseCodexFile } from "./codex";
 import { totalTokens } from "../normalize";
 
-const fixture = fileURLToPath(
+const sample = fileURLToPath(
   new URL("./__fixtures__/codex-sample.jsonl", import.meta.url),
+);
+const edge = fileURLToPath(
+  new URL("./__fixtures__/codex-edge.jsonl", import.meta.url),
 );
 
 describe("parseCodexFile", () => {
-  it("emits one record per token_count with last_token_usage, mapping fresh input and cache read", () => {
-    const { records } = parseCodexFile(fixture);
+  it("derives records from cumulative total_token_usage deltas, mapping fresh input and cache read", () => {
+    const { records } = parseCodexFile(sample);
     expect(records).toHaveLength(2);
 
     expect(records[0]).toMatchObject({
@@ -727,14 +745,32 @@ describe("parseCodexFile", () => {
     });
   });
 
-  it("double-count guard: summed last_token_usage equals the final cumulative total", () => {
-    const { records } = parseCodexFile(fixture);
+  it("accounting guard: summed record totals equal the final cumulative total", () => {
+    const { records } = parseCodexFile(sample);
     const summed = records.reduce((acc, r) => acc + totalTokens(r), 0);
     expect(summed).toBe(1650); // final total_token_usage.total_tokens
   });
 
+  it("skips duplicate snapshots and needs no last_token_usage (edge fixture)", () => {
+    const { records } = parseCodexFile(edge);
+    expect(records).toHaveLength(2); // the duplicate 09:02 snapshot is skipped
+    expect(records[0]).toMatchObject({
+      inputTokens: 100,
+      cacheReadTokens: 0,
+      outputTokens: 10,
+    });
+    expect(records[1]).toMatchObject({
+      inputTokens: 150,
+      cacheReadTokens: 50,
+      outputTokens: 20,
+      reasoningTokens: 5,
+    });
+    const summed = records.reduce((acc, r) => acc + totalTokens(r), 0);
+    expect(summed).toBe(330); // final cumulative total
+  });
+
   it("captures the latest rate-limit snapshot as quota", () => {
-    const { quota } = parseCodexFile(fixture);
+    const { quota } = parseCodexFile(sample);
     expect(quota).not.toBeNull();
     expect(quota!.timestamp).toBe("2026-06-02T09:10:00.000Z");
     expect(quota!.primary).toMatchObject({
@@ -778,12 +814,39 @@ function toWindow(w: any): RateLimitWindow | null {
   };
 }
 
+interface Cumulative {
+  input: number;
+  cached: number;
+  output: number;
+  reasoning: number;
+  total: number;
+}
+
+function readCumulative(info: any): Cumulative | null {
+  const t = info?.total_token_usage;
+  if (!t) return null;
+  return {
+    input: t.input_tokens ?? 0,
+    cached: t.cached_input_tokens ?? 0,
+    output: t.output_tokens ?? 0,
+    reasoning: t.reasoning_output_tokens ?? 0,
+    total: t.total_tokens ?? 0,
+  };
+}
+
 export function parseCodexFile(path: string): ParsedFile {
   const records: UsageRecord[] = [];
   let quota: RateLimitSnapshot | null = null;
   let model = "unknown";
   let cwd: string | null = null;
   let sessionId = "";
+  let prev: Cumulative = {
+    input: 0,
+    cached: 0,
+    output: 0,
+    reasoning: 0,
+    total: 0,
+  };
 
   const lines = readFileSync(path, "utf8").split("\n");
 
@@ -800,6 +863,7 @@ export function parseCodexFile(path: string): ParsedFile {
     if (obj.type === "session_meta") {
       cwd = obj.payload?.cwd ?? cwd;
       sessionId = obj.payload?.id ?? sessionId;
+      prev = { input: 0, cached: 0, output: 0, reasoning: 0, total: 0 };
       continue;
     }
 
@@ -818,22 +882,37 @@ export function parseCodexFile(path: string): ParsedFile {
           secondary: toWindow(rl.secondary),
         };
       }
-      const last = obj.payload.info?.last_token_usage;
-      if (!last) continue;
 
-      const input = last.input_tokens ?? 0;
-      const cached = last.cached_input_tokens ?? 0;
+      const cur = readCumulative(obj.payload.info);
+      if (!cur) continue; // info null, or no cumulative usage on this event
+
+      // Delta from the previous cumulative snapshot. If the cumulative went
+      // backwards (counter/session reset), take the current snapshot as the delta.
+      const reset = cur.total < prev.total;
+      const d = reset
+        ? cur
+        : {
+            input: cur.input - prev.input,
+            cached: cur.cached - prev.cached,
+            output: cur.output - prev.output,
+            reasoning: cur.reasoning - prev.reasoning,
+            total: cur.total - prev.total,
+          };
+      prev = cur;
+
+      if (d.total <= 0) continue; // duplicate snapshot / no forward progress
+
       records.push({
         tool: "codex",
         timestamp: String(obj.timestamp ?? ""),
         model,
         project: projectFromCwd(cwd),
         sessionId,
-        inputTokens: Math.max(0, input - cached),
-        outputTokens: last.output_tokens ?? 0,
+        inputTokens: Math.max(0, d.input - d.cached),
+        outputTokens: d.output,
         cacheWriteTokens: 0,
-        cacheReadTokens: cached,
-        reasoningTokens: last.reasoning_output_tokens ?? 0,
+        cacheReadTokens: d.cached,
+        reasoningTokens: d.reasoning,
       });
     }
   }
@@ -845,13 +924,13 @@ export function parseCodexFile(path: string): ParsedFile {
 - [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run src/lib/parsers/codex.test.ts`
-Expected: PASS — including the double-count guard.
+Expected: PASS — including the accounting guard and the edge-fixture (duplicate-snapshot + cumulative-only) case.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/lib/parsers/codex.ts src/lib/parsers/codex.test.ts src/lib/parsers/__fixtures__/codex-sample.jsonl
-git commit -m "feat(lib): parse Codex rollouts with per-turn token accounting"
+git add src/lib/parsers/codex.ts src/lib/parsers/codex.test.ts src/lib/parsers/__fixtures__/codex-sample.jsonl src/lib/parsers/__fixtures__/codex-edge.jsonl
+git commit -m "feat(lib): parse Codex rollouts via cumulative token-usage deltas"
 ```
 
 ---
@@ -1077,7 +1156,7 @@ export function aggregate(
       day.codexCost += c;
     }
 
-    const pKey = `${r.tool}�${r.project}`;
+    const pKey = JSON.stringify([r.tool, r.project]);
     let proj = projects.get(pKey);
     if (!proj) {
       proj = { project: r.project, tool: r.tool, tokens: 0, cost: 0 };
@@ -1086,7 +1165,7 @@ export function aggregate(
     proj.tokens += tokens;
     proj.cost += c;
 
-    const mKey = `${r.tool}�${r.model}`;
+    const mKey = JSON.stringify([r.tool, r.model]);
     let mod = models.get(mKey);
     if (!mod) {
       mod = {
@@ -1655,6 +1734,10 @@ function fmtTokens(n: number): string {
 function fmtUsd(n: number): string {
   return `$${n.toFixed(2)}`;
 }
+function fmtRange(start: string | null, end: string | null): string {
+  if (!start || !end) return "no data";
+  return `${start.slice(0, 10)} to ${end.slice(0, 10)}`;
+}
 
 export default function Overview({ data }: { data: Rollups }) {
   const cards = [
@@ -1664,13 +1747,18 @@ export default function Overview({ data }: { data: Rollups }) {
     { label: "Codex tokens", value: fmtTokens(data.totals.codex.tokens) },
   ];
   return (
-    <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      {cards.map((c) => (
-        <div key={c.label} className="rounded-xl bg-neutral-900 p-4">
-          <div className="text-sm text-neutral-400">{c.label}</div>
-          <div className="text-2xl font-semibold mt-1">{c.value}</div>
-        </div>
-      ))}
+    <section className="space-y-2">
+      <div className="text-sm text-neutral-400">
+        Date range: {fmtRange(data.dateRange.start, data.dateRange.end)}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {cards.map((c) => (
+          <div key={c.label} className="rounded-xl bg-neutral-900 p-4">
+            <div className="text-sm text-neutral-400">{c.label}</div>
+            <div className="text-2xl font-semibold mt-1">{c.value}</div>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
@@ -1798,17 +1886,17 @@ git commit -m "feat(ui): render overview totals and model/project breakdowns"
 
 ---
 
-## Task 10: Trend chart, quota panel, and filters
+## Task 10: Trend chart and quota panel
 
 **Files:**
 
-- Create: `src/components/TrendChart.tsx`, `src/components/QuotaPanel.tsx`, `src/components/Dashboard.tsx`
-- Modify: `src/pages/index.astro` (mount a single `Dashboard` island that owns filters + refetch)
+- Create: `src/components/TrendChart.tsx`, `src/components/QuotaPanel.tsx`
+- Modify: `src/pages/index.astro` (mount the trend and quota islands alongside Task 9's)
 
 **Interfaces:**
 
-- Consumes: `Rollups`. `Dashboard` fetches `/api/usage` with filter params and `/api/refresh`, re-rendering all child charts.
-- Produces: the complete interactive dashboard.
+- Consumes: `Rollups` (server-rendered).
+- Produces: `TrendChart` (tokens/cost toggle) and `QuotaPanel` (Codex 5h + weekly windows). `index.astro` now renders Overview, TrendChart, ByModel, ByProject, and QuotaPanel as `client:load` islands fed the server-computed rollups.
 
 - [ ] **Step 1: Create `src/components/TrendChart.tsx`**
 
@@ -1926,7 +2014,62 @@ export default function QuotaPanel({ data }: { data: Rollups }) {
 }
 ```
 
-- [ ] **Step 3: Create `src/components/Dashboard.tsx`**
+- [ ] **Step 3: Modify `src/pages/index.astro` to mount the trend and quota islands**
+
+```astro
+---
+import Layout from '../layouts/Layout.astro';
+import Overview from '../components/Overview.tsx';
+import TrendChart from '../components/TrendChart.tsx';
+import ByModel from '../components/ByModel.tsx';
+import ByProject from '../components/ByProject.tsx';
+import QuotaPanel from '../components/QuotaPanel.tsx';
+import { scan } from '../lib/scan';
+import { aggregate } from '../lib/aggregate';
+
+export const prerender = false;
+
+const { records, codexQuota } = scan();
+const rollups = aggregate(records, codexQuota);
+---
+<Layout>
+  <Overview client:load data={rollups} />
+  <TrendChart client:load data={rollups} />
+  <div class="grid md:grid-cols-2 gap-8">
+    <ByModel client:load data={rollups} />
+    <ByProject client:load data={rollups} />
+  </div>
+  <QuotaPanel client:load data={rollups} />
+</Layout>
+```
+
+- [ ] **Step 4: Verify the charts render against real data**
+
+Run: `npm run dev`
+Then open `http://localhost:4321` and confirm: Overview cards + date range, the "Over time" stacked area chart (try the `tokens`/`cost` toggle), "By model", "By project", and "Codex quota" all render with your real data. Stop the server when done.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/components/TrendChart.tsx src/components/QuotaPanel.tsx src/pages/index.astro
+git commit -m "feat(ui): add usage trend chart and Codex quota panel"
+```
+
+---
+
+## Task 11: Interactive filters (tool + date range) and refresh
+
+**Files:**
+
+- Create: `src/components/Dashboard.tsx`
+- Modify: `src/pages/index.astro` (mount a single `Dashboard` island that owns the filters and refetch)
+
+**Interfaces:**
+
+- Consumes: `Rollups` (as `initial`); the `/api/usage?tool=&from=&to=` and `POST /api/refresh` endpoints from Task 8.
+- Produces: `Dashboard` — a client island holding `tool`, `from`, `to` state, refetching on every change and on Refresh, and re-rendering all child charts. This satisfies the design's "date-range picker + Claude/Codex toggle" requirement (Codex gate, BLOCK #3).
+
+- [ ] **Step 1: Create `src/components/Dashboard.tsx`**
 
 ```tsx
 // src/components/Dashboard.tsx
@@ -1939,19 +2082,29 @@ import ByModel from "./ByModel";
 import ByProject from "./ByProject";
 import QuotaPanel from "./QuotaPanel";
 
+type ToolFilter = Tool | "all";
+
 export default function Dashboard({ initial }: { initial: Rollups }) {
   const [data, setData] = useState<Rollups>(initial);
-  const [tool, setTool] = useState<Tool | "all">("all");
+  const [tool, setTool] = useState<ToolFilter>("all");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function load(nextTool: Tool | "all", refresh = false) {
+  async function load(
+    next: { tool?: ToolFilter; from?: string; to?: string } = {},
+    refresh = false,
+  ) {
+    const t = next.tool ?? tool;
+    const f = next.from ?? from;
+    const u = next.to ?? to;
     setLoading(true);
     try {
-      if (refresh) {
-        await fetch("/api/refresh", { method: "POST" });
-      }
+      if (refresh) await fetch("/api/refresh", { method: "POST" });
       const params = new URLSearchParams();
-      if (nextTool !== "all") params.set("tool", nextTool);
+      if (t !== "all") params.set("tool", t);
+      if (f) params.set("from", f);
+      if (u) params.set("to", u);
       const res = await fetch(`/api/usage?${params.toString()}`);
       setData(await res.json());
     } finally {
@@ -1961,21 +2114,47 @@ export default function Dashboard({ initial }: { initial: Rollups }) {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-2 text-sm">
-        {(["all", "claude", "codex"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => {
-              setTool(t);
-              load(t);
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <div className="flex gap-2">
+          {(["all", "claude", "codex"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => {
+                setTool(t);
+                load({ tool: t });
+              }}
+              className={`px-3 py-1 rounded ${tool === t ? "bg-blue-500 text-white" : "bg-neutral-800 text-neutral-300"}`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        <label className="flex items-center gap-1 text-neutral-400">
+          From
+          <input
+            type="date"
+            value={from}
+            onChange={(e) => {
+              setFrom(e.target.value);
+              load({ from: e.target.value });
             }}
-            className={`px-3 py-1 rounded ${tool === t ? "bg-blue-500 text-white" : "bg-neutral-800 text-neutral-300"}`}
-          >
-            {t}
-          </button>
-        ))}
+            className="bg-neutral-800 rounded px-2 py-1 text-neutral-100"
+          />
+        </label>
+        <label className="flex items-center gap-1 text-neutral-400">
+          To
+          <input
+            type="date"
+            value={to}
+            onChange={(e) => {
+              setTo(e.target.value);
+              load({ to: e.target.value });
+            }}
+            className="bg-neutral-800 rounded px-2 py-1 text-neutral-100"
+          />
+        </label>
         <button
-          onClick={() => load(tool, true)}
+          onClick={() => load({}, true)}
           className="ml-auto px-3 py-1 rounded bg-neutral-800 text-neutral-300"
         >
           {loading ? "Loading…" : "Refresh"}
@@ -1993,7 +2172,7 @@ export default function Dashboard({ initial }: { initial: Rollups }) {
 }
 ```
 
-- [ ] **Step 4: Replace `src/pages/index.astro` to mount the single Dashboard island**
+- [ ] **Step 2: Replace `src/pages/index.astro` to mount the single Dashboard island**
 
 ```astro
 ---
@@ -2012,39 +2191,39 @@ const rollups = aggregate(records, codexQuota);
 </Layout>
 ```
 
-- [ ] **Step 5: Verify the full dashboard end to end**
+- [ ] **Step 3: Verify filters end to end**
 
 Run: `npm run dev`
 Then open `http://localhost:4321` and check:
 
-- Overview cards, "Over time" stacked area chart, "By model", "By project", and "Codex quota" all render with your real data.
-- The `tokens`/`cost` toggle on the trend chart switches the series.
-- The `all`/`claude`/`codex` filter buttons re-fetch and the totals change.
-- `Refresh` re-scans (totals stay consistent; no error in the browser console).
+- The `all`/`claude`/`codex` buttons refetch and the totals + charts change.
+- Setting `From` and/or `To` (date inputs) narrows the data; the Overview date range and Trend chart update accordingly.
+- `Refresh` re-scans the files (totals stay consistent; no error in the browser console).
   Stop the server when done.
 
-- [ ] **Step 6: Run the full test suite**
+- [ ] **Step 4: Run the full test suite**
 
 Run: `npm test`
 Expected: all Vitest suites pass.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/components/TrendChart.tsx src/components/QuotaPanel.tsx src/components/Dashboard.tsx src/pages/index.astro
-git commit -m "feat(ui): add trend chart, Codex quota panel, and live filters"
+git add src/components/Dashboard.tsx src/pages/index.astro
+git commit -m "feat(ui): add tool and date-range filters with live refresh"
 ```
 
 ---
 
 ## Self-Review notes (already folded into the plan)
 
-- **Spec coverage:** tokens-over-time (Task 10 TrendChart), cost estimates (Tasks 3/6, Overview), by-project (Task 9), by-model (Task 9), Codex quota (Task 10), local on-demand run (Tasks 1/8/9). All five spec sections map to tasks.
-- **Codex double-count guard** (spec decision #1): Task 5, dedicated test against the fixture's canonical `1650` total.
+- **Spec coverage:** tokens-over-time (Task 10 TrendChart), cost estimates (Tasks 3/6, Overview), by-project (Task 9), by-model (Task 9), Codex quota (Task 10), Claude/Codex toggle + date-range picker (Task 11), local on-demand run (Tasks 1/8/9). All spec sections map to tasks.
+- **Codex accounting guard** (spec decision #1): Task 5 derives records from cumulative `total_token_usage` deltas (robust to duplicate snapshots); the guard test pins the summed record totals to the fixture's canonical `1650`, and an edge fixture proves duplicate-skip + cumulative-only handling.
 - **Quota honesty** (decision #2): Codex quota only; Claude has no quota panel (QuotaPanel shows Codex only) — no fabricated Claude percentage.
 - **Cost notional** (decision #3): cache-read weighted at its own low rate in `cost()`.
-- **Correction over spec:** Codex `input_tokens` includes cached, and `output_tokens` includes reasoning. The plan computes fresh input = `input − cached` and treats reasoning as informational (excluded from totals and cost). `costUsd` is computed at aggregation, not stored on the record. These are documented in Global Constraints.
+- **Correction over spec:** Codex `input_tokens` includes cached, and `output_tokens` includes reasoning. The plan computes fresh input = `input − cached` and treats reasoning as informational (excluded from totals and cost). `costUsd` is computed at aggregation, not stored on the record. The design doc's cost formula was corrected to match. These are documented in Global Constraints.
 - **Type consistency:** `Rollups`, `UsageRecord`, `RateLimitSnapshot`, `ParsedFile`, `cost`, `isPriced`, `aggregate`, `scan`, `applyFilters` names are used identically across tasks.
+- **Codex plan-gate findings folded in (v2):** BLOCK #1 (cumulative-delta accounting), BLOCK #3 (date-range filter UI → Task 11), WARN #4 (Overview date range), WARN #5 (design formula corrected), WARN #6 (edge fixtures), WARN #7 (`JSON.stringify` map keys), WARN #11 (synthetic-fixtures constraint), WARN #12 (split Task 10/11). NITs #8–10 (JSON import, `vi.mock` ordering, `readdir` recursive) were confirmed correct, no change.
 
 ## Post-build iteration points (from the spec)
 
@@ -2052,4 +2231,4 @@ git commit -m "feat(ui): add trend chart, Codex quota panel, and live filters"
 - Decide whether the trend chart defaults to `tokens` or `cost` (currently `tokens`).
 - Project-label collisions (worktrees share a basename) — revisit `projectFromCwd` if noisy.
 - Optional configured Claude plan-token limit for a Claude-side quota indicator.
-- If real Codex sessions ever show `sum(last_token_usage) ≠ final total_token_usage`, switch the Codex parser to attribute each session's final `total_token_usage` to its date instead of per-event deltas.
+- The Codex parser now uses cumulative `total_token_usage` deltas (not `last_token_usage`), which is robust to duplicate snapshots. If a future Codex version stops emitting cumulative `total_token_usage` on `token_count` events, revisit `readCumulative`.

@@ -158,7 +158,7 @@ Filters: date-range picker + Claude/Codex toggle, plus a tokens↔cost toggle on
 }
 ```
 
-`cost(record)` = `inputTokens·input + outputTokens·output + cacheWriteTokens·cacheWrite + cacheReadTokens·cacheRead + reasoningTokens·output`, each rate ÷ 1,000,000. (Reasoning tokens bill as output for Codex.) Unknown model → cost 0, flagged `unpriced`.
+`cost(record)` = `inputTokens·input + outputTokens·output + cacheWriteTokens·cacheWrite + cacheReadTokens·cacheRead`, each rate ÷ 1,000,000. `reasoningTokens` is **not** a separate cost term: for Codex it is already counted inside `output_tokens` (and billed at the output rate there), so adding it again would double-count. Unknown model → cost 0, flagged `unpriced`.
 
 ## Testing
 
