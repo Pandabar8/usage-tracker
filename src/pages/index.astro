@@ -1,6 +1,18 @@
 ---
+import Layout from '../layouts/Layout.astro';
+import Overview from '../components/Overview.tsx';
+import ByModel from '../components/ByModel.tsx';
+import ByProject from '../components/ByProject.tsx';
+import { scan } from '../lib/scan';
+import { aggregate } from '../lib/aggregate';
+
+export const prerender = false;
+
+const { records, codexQuota } = scan();
+const rollups = aggregate(records, codexQuota);
 ---
-<html lang="en">
-  <head><meta charset="utf-8" /><title>Usage Tracker</title></head>
-  <body><main>Usage Tracker — scaffold</main></body>
-</html>
+<Layout>
+  <Overview client:load data={rollups} />
+  <ByModel client:load data={rollups} />
+  <ByProject client:load data={rollups} />
+</Layout>
