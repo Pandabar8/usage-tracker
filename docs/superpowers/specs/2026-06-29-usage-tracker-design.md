@@ -62,9 +62,10 @@ type UsageRecord = {
   outputTokens: number;
   cacheWriteTokens: number; // claude: cache_creation_input_tokens; codex: 0
   cacheReadTokens: number; // claude: cache_read_input_tokens; codex: cached_input_tokens
-  reasoningTokens: number; // codex: reasoning_output_tokens; claude: 0
-  costUsd: number; // computed by pricing.ts
+  reasoningTokens: number; // codex: reasoning_output_tokens; claude: 0 (informational; excluded from totals/cost)
 };
+// Note: cost is NOT stored on the record. It is computed during aggregation
+// (pricing.json may change), so the dollar figure always reflects current rates.
 ```
 
 **Project label:** derive from `cwd`. Default to the basename of the path (e.g. `/Users/.../FinApp` → `FinApp`); keep the full path available for disambiguation when two projects share a basename. Records with no `cwd` are grouped under `(unknown)`.
@@ -168,7 +169,7 @@ Filters: date-range picker + Claude/Codex toggle, plus a tokens↔cost toggle on
 ## Testing
 
 - Vitest over `src/lib/` only (pure functions, no Astro runtime needed).
-- Parser fixtures: a small trimmed real Claude transcript and a real Codex rollout, with **token totals pinned to literals read off the files** (canonical anchors), not recomputed by the parser's own formula.
+- Parser fixtures: **synthetic, hand-authored** Claude and Codex JSONL fixtures (made-up paths and numbers — never trimmed real `~/.claude`/`~/.codex` content), with **token totals pinned to hand-computed literals** (canonical anchors), not recomputed by the parser's own formula.
 - The Codex double-count test (decision #1) is the load-bearing one.
 
 ## How to run
