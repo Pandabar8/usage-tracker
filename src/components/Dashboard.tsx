@@ -32,6 +32,7 @@ export default function Dashboard({ initial }: { initial: Rollups }) {
       if (f) params.set("from", f);
       if (u) params.set("to", u);
       const res = await fetch(`/api/usage?${params.toString()}`);
+      if (!res.ok) throw new Error(`usage request failed: ${res.status}`);
       setData(await res.json());
     } finally {
       setLoading(false);
