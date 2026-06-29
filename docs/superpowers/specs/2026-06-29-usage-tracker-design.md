@@ -74,7 +74,7 @@ type UsageRecord = {
 The parsing/pricing/aggregation logic lives in `src/lib/` as pure functions with **no Astro imports**, so it is unit-tested in isolation and Astro is only the delivery shell.
 
 - **`src/lib/parsers/claude.ts`** — `(filePath) -> UsageRecord[]`. One record per assistant turn that has a `usage` block. Skips malformed lines (counts them).
-- **`src/lib/parsers/codex.ts`** — `(filePath) -> UsageRecord[]`. Walks events in order, tracking the current `turn_context.model` and the session `cwd`; emits one record per `token_count` event using **`last_token_usage`** (per-turn delta). See "Codex double-count guard" below.
+- **`src/lib/parsers/codex.ts`** — `(filePath) -> UsageRecord[]`. Walks events in order, tracking the current `turn_context.model` and the session `cwd`; emits one record per forward step in the cumulative **`total_token_usage`** (each record is the delta from the previous snapshot; duplicate/zero-delta snapshots are skipped; `last_token_usage` is not used). See "Codex accounting guard" below.
 - **`src/lib/normalize.ts`** — the `UsageRecord` type + the `cwd → project` helper.
 - **`src/lib/pricing.ts` + `src/lib/pricing.json`** — model → per-1M-token rates. `cost(record) -> usd`. Unknown model → cost 0 and the model is flagged `unpriced` in the UI. `pricing.json` is the editable source of truth (see Pricing below).
 - **`src/lib/aggregate.ts`** — `UsageRecord[] -> Rollups`: by day, by project, by model, by tool; plus the latest Codex quota snapshot. Pure reducers.
@@ -102,7 +102,7 @@ Filters: date-range picker + Claude/Codex toggle, plus a tokens↔cost toggle on
 
 ## Three correctness decisions
 
-1. **Codex double-count guard.** Each session logs cumulative `total_token_usage` _and_ per-turn `last_token_usage` on every `token_count` event. The parser sums **`last_token_usage`** per event for the time series. A Vitest test pins each fixture session's summed `last_token_usage` against that session's final `total_token_usage` (the canonical value) so any drift in the summation logic is caught. This is the one real correctness risk in the project.
+1. **Codex accounting guard.** Each session logs cumulative `total_token_usage` on every `token_count` event. The parser derives each record from the **delta between consecutive cumulative snapshots** (duplicate snapshots → zero delta → skipped; a single component regressing while the total advances is clamped to 0; a true counter reset uses the current snapshot). It does **not** sum `last_token_usage`, which would over-count when Codex emits duplicate snapshots within a turn. A Vitest test pins the summed record totals against the session's final cumulative `total_token_usage` (the canonical value), and edge/reset fixtures exercise the duplicate and per-field-regression paths. This is the one real correctness risk in the project.
 
 2. **Quota honesty.** Codex `rate_limits.used_percent` is real and is shown as-is. Claude has no quota signal in its transcripts, so the Claude side of the Quota panel shows token volume vs an optional, clearly-labeled configured plan limit — never a fabricated percentage.
 
@@ -152,8 +152,13 @@ Filters: date-range picker + Claude/Codex toggle, plus a tokens↔cost toggle on
     "cacheRead": 1.0,
   },
 
-  // Codex / GPT-5.x — SEED VALUES, verify against OpenAI pricing before trusting $ figures
-  "gpt-5.3-codex": { "input": 0, "output": 0, "cacheWrite": 0, "cacheRead": 0 },
+  // Codex / GPT-5.x — gpt-5.3-codex seeded from OpenAI published rates; re-confirm before trusting $ figures
+  "gpt-5.3-codex": {
+    "input": 1.75,
+    "output": 14,
+    "cacheWrite": 0,
+    "cacheRead": 0.175,
+  },
   "gpt-5-codex": { "input": 0, "output": 0, "cacheWrite": 0, "cacheRead": 0 },
 }
 ```

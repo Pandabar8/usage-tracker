@@ -86,7 +86,7 @@
     "astro": "^5.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^2.13.0"
+    "recharts": "^2.15.4"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
@@ -384,12 +384,17 @@ git commit -m "feat(lib): add usage record types and normalization helpers"
     "cacheWrite": 12.5,
     "cacheRead": 1.0
   },
-  "gpt-5.3-codex": { "input": 0, "output": 0, "cacheWrite": 0, "cacheRead": 0 },
+  "gpt-5.3-codex": {
+    "input": 1.75,
+    "output": 14,
+    "cacheWrite": 0,
+    "cacheRead": 0.175
+  },
   "gpt-5-codex": { "input": 0, "output": 0, "cacheWrite": 0, "cacheRead": 0 }
 }
 ```
 
-> The `gpt-5.x-codex` rows are seed placeholders (0). Fill them with OpenAI's published rates before trusting Codex dollar figures; a `0` rate makes the model show as `unpriced` in the UI.
+> `gpt-5.3-codex` is seeded from OpenAI's published API rates (input $1.75, cached input $0.175, output $14 per 1M; no separate cache-write tier). Re-confirm against current OpenAI pricing if the dollar figures matter. `gpt-5-codex` is left at `0` (rate not confirmed) — a `0` rate makes a model show as `unpriced` in the UI, so unknown/unconfirmed models are simply unpriced rather than silently wrong.
 
 - [ ] **Step 2: Write the failing test**
 
@@ -667,7 +672,7 @@ git commit -m "feat(lib): parse Claude Code transcripts into usage records"
 
 **Files:**
 
-- Create: `src/lib/parsers/codex.ts`, `src/lib/parsers/__fixtures__/codex-sample.jsonl`, `src/lib/parsers/__fixtures__/codex-edge.jsonl`
+- Create: `src/lib/parsers/codex.ts`, `src/lib/parsers/__fixtures__/codex-sample.jsonl`, `src/lib/parsers/__fixtures__/codex-edge.jsonl`, `src/lib/parsers/__fixtures__/codex-reset.jsonl`
 - Test: `src/lib/parsers/codex.test.ts`
 
 **Interfaces:**
@@ -703,6 +708,17 @@ Also create the edge fixture `src/lib/parsers/__fixtures__/codex-edge.jsonl` —
 
 > Edge anchors (`codex-edge.jsonl`): none of these events carry `last_token_usage`, proving the parser depends only on cumulative `total_token_usage`. 09:01 advances 0 → 110 (record: fresh 100, cacheRead 0, output 10). 09:02 repeats the same cumulative (delta 0) and is **skipped** (no double-count). 09:03 advances 110 → 330 (delta input 200, cached 50, output 20, reasoning 5 → fresh 150, cacheRead 50, output 20). Two records; their `totalTokens` (110, 220) sum to the final cumulative **330**.
 
+Also create the reset fixture `src/lib/parsers/__fixtures__/codex-reset.jsonl` — the total advances but a component (`cached_input_tokens`) regresses, which must clamp to 0 rather than emit a negative delta:
+
+```jsonl
+{"timestamp":"2026-06-04T09:00:00.000Z","type":"session_meta","payload":{"id":"c3","cwd":"/Users/me/ProjD"}}
+{"timestamp":"2026-06-04T09:00:00.500Z","type":"turn_context","payload":{"cwd":"/Users/me/ProjD","model":"gpt-5.3-codex"}}
+{"timestamp":"2026-06-04T09:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":80,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":110}}}}
+{"timestamp":"2026-06-04T09:02:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":200,"cached_input_tokens":50,"output_tokens":25,"reasoning_output_tokens":0,"total_tokens":225}}}}
+```
+
+> Reset anchors (`codex-reset.jsonl`): 09:01 advances 0 → 110 (fresh `100 − 80 = 20`, cacheRead 80, output 10). 09:02's total advances (110 → 225) but `cached_input_tokens` regresses 80 → 50; the cached delta clamps to **0** (not −30), giving fresh `max(0, 100 − 0) = 100`, cacheRead 0, output 15, `totalTokens = 115`. The two record `totalTokens` (110, 115) still sum to the final cumulative **225** — the accounting guard holds.
+
 - [ ] **Step 2: Write the failing test**
 
 ```ts
@@ -717,6 +733,9 @@ const sample = fileURLToPath(
 );
 const edge = fileURLToPath(
   new URL("./__fixtures__/codex-edge.jsonl", import.meta.url),
+);
+const reset = fileURLToPath(
+  new URL("./__fixtures__/codex-reset.jsonl", import.meta.url),
 );
 
 describe("parseCodexFile", () => {
@@ -767,6 +786,18 @@ describe("parseCodexFile", () => {
     });
     const summed = records.reduce((acc, r) => acc + totalTokens(r), 0);
     expect(summed).toBe(330); // final cumulative total
+  });
+
+  it("clamps a per-field regression to zero without over-counting (reset fixture)", () => {
+    const { records } = parseCodexFile(reset);
+    expect(records).toHaveLength(2);
+    expect(records[1]).toMatchObject({
+      inputTokens: 100,
+      cacheReadTokens: 0, // cached regressed 80 -> 50; the delta clamps to 0, not -30
+      outputTokens: 15,
+    });
+    const summed = records.reduce((acc, r) => acc + totalTokens(r), 0);
+    expect(summed).toBe(225); // still equals the final cumulative total
   });
 
   it("captures the latest rate-limit snapshot as quota", () => {
@@ -886,18 +917,24 @@ export function parseCodexFile(path: string): ParsedFile {
       const cur = readCumulative(obj.payload.info);
       if (!cur) continue; // info null, or no cumulative usage on this event
 
-      // Delta from the previous cumulative snapshot. If the cumulative went
-      // backwards (counter/session reset), take the current snapshot as the delta.
-      const reset = cur.total < prev.total;
-      const d = reset
-        ? cur
-        : {
-            input: cur.input - prev.input,
-            cached: cur.cached - prev.cached,
-            output: cur.output - prev.output,
-            reasoning: cur.reasoning - prev.reasoning,
-            total: cur.total - prev.total,
-          };
+      // Delta from the previous cumulative snapshot.
+      // - True reset (the cumulative TOTAL went backwards → counter/session
+      //   restarted): take the current snapshot as the delta.
+      // - Otherwise difference per field, clamping each to >= 0 so a single
+      //   component regressing while the total still advances cannot produce a
+      //   negative delta. (Clamping a component here — rather than treating any
+      //   field decrease as a full reset — keeps the per-record totals summing to
+      //   the final cumulative total, which is exactly the accounting guard.)
+      const d =
+        cur.total < prev.total
+          ? cur
+          : {
+              input: Math.max(0, cur.input - prev.input),
+              cached: Math.max(0, cur.cached - prev.cached),
+              output: Math.max(0, cur.output - prev.output),
+              reasoning: Math.max(0, cur.reasoning - prev.reasoning),
+              total: cur.total - prev.total,
+            };
       prev = cur;
 
       if (d.total <= 0) continue; // duplicate snapshot / no forward progress
@@ -929,7 +966,7 @@ Expected: PASS — including the accounting guard and the edge-fixture (duplicat
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/lib/parsers/codex.ts src/lib/parsers/codex.test.ts src/lib/parsers/__fixtures__/codex-sample.jsonl src/lib/parsers/__fixtures__/codex-edge.jsonl
+git add src/lib/parsers/codex.ts src/lib/parsers/codex.test.ts src/lib/parsers/__fixtures__/codex-sample.jsonl src/lib/parsers/__fixtures__/codex-edge.jsonl src/lib/parsers/__fixtures__/codex-reset.jsonl
 git commit -m "feat(lib): parse Codex rollouts via cumulative token-usage deltas"
 ```
 
@@ -1294,7 +1331,7 @@ const codexLines = [
     payload: {
       type: "token_count",
       info: {
-        last_token_usage: {
+        total_token_usage: {
           input_tokens: 300,
           cached_input_tokens: 100,
           output_tokens: 20,
