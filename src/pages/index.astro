@@ -1,8 +1,10 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import Overview from '../components/Overview.tsx';
+import TrendChart from '../components/TrendChart.tsx';
 import ByModel from '../components/ByModel.tsx';
 import ByProject from '../components/ByProject.tsx';
+import QuotaPanel from '../components/QuotaPanel.tsx';
 import { scan } from '../lib/scan';
 import { aggregate } from '../lib/aggregate';
 
@@ -13,6 +15,10 @@ const rollups = aggregate(records, codexQuota);
 ---
 <Layout>
   <Overview client:load data={rollups} />
-  <ByModel client:load data={rollups} />
-  <ByProject client:load data={rollups} />
+  <TrendChart client:load data={rollups} />
+  <div class="grid md:grid-cols-2 gap-8">
+    <ByModel client:load data={rollups} />
+    <ByProject client:load data={rollups} />
+  </div>
+  <QuotaPanel client:load data={rollups} />
 </Layout>
