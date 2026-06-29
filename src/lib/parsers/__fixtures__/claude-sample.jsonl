@@ -1,0 +1,4 @@
+{"type":"assistant","timestamp":"2026-06-01T10:00:00.000Z","cwd":"/Users/me/ProjA","sessionId":"s1","gitBranch":"main","message":{"model":"claude-opus-4-8","usage":{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":200,"cache_read_input_tokens":300}}}
+{"type":"user","timestamp":"2026-06-01T10:30:00.000Z","cwd":"/Users/me/ProjA","sessionId":"s1","message":{"role":"user","content":"hi"}}
+{"type":"assistant","timestamp":"2026-06-01T11:00:00.000Z","cwd":"/Users/me/ProjA","sessionId":"s1","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}
+{ this line is not valid json
