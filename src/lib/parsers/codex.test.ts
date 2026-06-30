@@ -13,8 +13,23 @@ const edge = fileURLToPath(
 const reset = fileURLToPath(
   new URL("./__fixtures__/codex-reset.jsonl", import.meta.url),
 );
+const multimeta = fileURLToPath(
+  new URL("./__fixtures__/codex-multimeta.jsonl", import.meta.url),
+);
 
 describe("parseCodexFile", () => {
+  it("does not over-count when one file has many session_meta lines sharing a single monotonic counter", () => {
+    // Real Codex rollouts pack hundreds of session_meta lines around ONE
+    // continuous cumulative counter. The baseline must NOT reset on session_meta,
+    // or each subsequent event's delta becomes the full running cumulative.
+    const { records } = parseCodexFile(multimeta);
+    expect(records).toHaveLength(3);
+    expect(records[1]).toMatchObject({ inputTokens: 170, outputTokens: 30 }); // delta 100 -> 300
+    expect(records[2]).toMatchObject({ inputTokens: 250, outputTokens: 50 }); // delta 300 -> 600
+    const summed = records.reduce((acc, r) => acc + totalTokens(r), 0);
+    expect(summed).toBe(600); // final cumulative total, NOT 1000 (the session_meta over-count)
+  });
+
   it("derives records from cumulative total_token_usage deltas, mapping fresh input and cache read", () => {
     const { records } = parseCodexFile(sample);
     expect(records).toHaveLength(2);

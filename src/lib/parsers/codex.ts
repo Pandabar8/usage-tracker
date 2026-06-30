@@ -66,7 +66,12 @@ export function parseCodexFile(path: string): ParsedFile {
     if (obj.type === "session_meta") {
       cwd = obj.payload?.cwd ?? cwd;
       sessionId = obj.payload?.id ?? sessionId;
-      prev = { input: 0, cached: 0, output: 0, reasoning: 0, total: 0 };
+      // Do NOT reset the cumulative baseline here. A single Codex rollout file
+      // can contain many session_meta lines that all share ONE continuous,
+      // monotonic `total_token_usage` counter; resetting `prev` to zero on each
+      // would turn every subsequent event's delta into the full running
+      // cumulative and massively over-count. A genuine counter restart is
+      // already handled by the `cur.total < prev.total` reset branch below.
       continue;
     }
 
