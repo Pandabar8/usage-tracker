@@ -1,6 +1,6 @@
 // src/lib/aggregate.test.ts
 import { describe, it, expect } from "vitest";
-import { aggregate } from "./aggregate";
+import { aggregate, claudeWindows } from "./aggregate";
 import type { UsageRecord } from "./normalize";
 import type { PricingTable } from "./pricing";
 
@@ -102,5 +102,57 @@ describe("aggregate", () => {
       start: "2026-06-01T10:00:00.000Z",
       end: "2026-06-02T11:00:00.000Z",
     });
+  });
+});
+
+describe("claudeWindows", () => {
+  const now = Date.parse("2026-06-29T12:00:00.000Z");
+  const records = [
+    rec({
+      tool: "claude",
+      timestamp: "2026-06-29T10:00:00.000Z",
+      outputTokens: 100,
+    }), // 2h old -> 5h & 7d
+    rec({
+      tool: "claude",
+      timestamp: "2026-06-29T05:00:00.000Z",
+      outputTokens: 200,
+    }), // 7h old -> 7d only
+    rec({
+      tool: "claude",
+      timestamp: "2026-06-25T12:00:00.000Z",
+      outputTokens: 400,
+    }), // 4d old -> 7d only
+    rec({
+      tool: "claude",
+      timestamp: "2026-06-20T12:00:00.000Z",
+      outputTokens: 800,
+    }), // 9d old -> neither
+    rec({
+      tool: "codex",
+      timestamp: "2026-06-29T11:30:00.000Z",
+      outputTokens: 1000,
+    }), // excluded: not claude
+    rec({
+      tool: "claude",
+      timestamp: "2026-06-30T00:00:00.000Z",
+      outputTokens: 50,
+    }), // future -> excluded
+  ];
+
+  it("sums claude tokens in the rolling 5h and 7d windows, excluding codex and future records", () => {
+    const w = claudeWindows(records, now);
+    expect(w.fiveHourTokens).toBe(100);
+    expect(w.sevenDayTokens).toBe(700);
+    expect(w.asOf).toBe("2026-06-29T12:00:00.000Z");
+  });
+
+  it("skips malformed timestamps without throwing", () => {
+    const w = claudeWindows(
+      [rec({ tool: "claude", timestamp: "not-a-date", outputTokens: 99 })],
+      now,
+    );
+    expect(w.fiveHourTokens).toBe(0);
+    expect(w.sevenDayTokens).toBe(0);
   });
 });

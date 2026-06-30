@@ -2,12 +2,13 @@
 import Layout from '../layouts/Layout.astro';
 import Dashboard from '../components/Dashboard.tsx';
 import { scan } from '../lib/scan';
-import { aggregate } from '../lib/aggregate';
+import { aggregate, claudeWindows } from '../lib/aggregate';
+import { defaultPricing } from '../lib/pricing';
 
 export const prerender = false;
 
 const { records, codexQuota } = scan();
-const rollups = aggregate(records, codexQuota);
+const rollups = aggregate(records, codexQuota, defaultPricing, claudeWindows(records, Date.now()));
 ---
 <Layout>
   <Dashboard client:load initial={rollups} />

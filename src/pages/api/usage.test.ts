@@ -59,4 +59,25 @@ describe("GET /api/usage", () => {
     const body = await res.json();
     expect(body.totals.combined.tokens).toBe(150);
   });
+
+  it("computes claudeWindows from unfiltered records even under a tool=codex filter", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-01T12:00:00.000Z"));
+    try {
+      const { GET } = await import("./usage");
+      const res = await GET({
+        url: new URL("http://localhost/api/usage?tool=codex"),
+      } as any);
+      const body = await res.json();
+      // The claude record (2026-06-01T10:00, 150 tok) is 2h old -> in both windows;
+      // codex is excluded from the windows. tool=codex filter must NOT zero them.
+      expect(body.claudeWindows.fiveHourTokens).toBe(150);
+      expect(body.claudeWindows.sevenDayTokens).toBe(150);
+      // The filter DID apply to the rollups, proving the windows used the unfiltered set.
+      expect(body.totals.claude.tokens).toBe(0);
+      expect(body.totals.codex.tokens).toBe(220);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

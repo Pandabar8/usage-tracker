@@ -31,6 +31,14 @@ export interface ParsedFile {
   quota: RateLimitSnapshot | null;
 }
 
+// Claude Code persists no rate-limit data, so its "limits" are shown as the
+// volume of tokens used in rolling windows ending at `asOf`.
+export interface ClaudeWindows {
+  fiveHourTokens: number;
+  sevenDayTokens: number;
+  asOf: string; // ISO timestamp of the `now` the windows were computed against; "" when unknown
+}
+
 export function projectFromCwd(cwd?: string | null): string {
   if (!cwd) return "(unknown)";
   const parts = cwd.split("/").filter(Boolean);
