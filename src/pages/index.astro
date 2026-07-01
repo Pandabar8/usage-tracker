@@ -6,6 +6,7 @@ import { aggregate, claudeWindows } from '../lib/aggregate';
 import { defaultPricing } from '../lib/pricing';
 import { buildForecast } from '../lib/forecast';
 import { buildTips } from '../lib/tips';
+import { getRetention, isRetentionRisky, effectiveRetentionDays } from '../lib/settings';
 
 export const prerender = false;
 
@@ -17,8 +18,10 @@ const windows = claudeWindows(records, now);
 const rollups = aggregate(records, codexQuota, defaultPricing, windows);
 const forecast = buildForecast(records, codexQuota, now);
 const tips = buildTips(records, forecast, defaultPricing);
+const info = getRetention();
+const retention = { risky: isRetentionRisky(info), days: effectiveRetentionDays(info) };
 const initial = { ...rollups, forecast, tips };
 ---
 <Layout>
-  <Dashboard client:load initial={initial} />
+  <Dashboard client:load initial={initial} retention={retention} />
 </Layout>

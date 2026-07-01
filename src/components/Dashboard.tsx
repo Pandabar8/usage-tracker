@@ -4,6 +4,7 @@ import type { DashboardData } from "../lib/aggregate";
 import type { Tool } from "../lib/normalize";
 import Overview from "./Overview";
 import Tips from "./Tips";
+import RetentionBanner from "./RetentionBanner";
 import TrendChart from "./TrendChart";
 import ByModel from "./ByModel";
 import ByProject from "./ByProject";
@@ -11,7 +12,13 @@ import QuotaPanel from "./QuotaPanel";
 
 type ToolFilter = Tool | "all";
 
-export default function Dashboard({ initial }: { initial: DashboardData }) {
+export default function Dashboard({
+  initial,
+  retention,
+}: {
+  initial: DashboardData;
+  retention: { risky: boolean; days: number };
+}) {
   const [data, setData] = useState<DashboardData>(initial);
   const [tool, setTool] = useState<ToolFilter>("all");
   const [from, setFrom] = useState("");
@@ -42,6 +49,7 @@ export default function Dashboard({ initial }: { initial: DashboardData }) {
 
   return (
     <div className="space-y-8">
+      <RetentionBanner risky={retention.risky} days={retention.days} />
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <div className="flex gap-2">
           {(["all", "claude", "codex"] as const).map((t) => (
