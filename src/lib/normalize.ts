@@ -68,3 +68,11 @@ export interface Forecast {
   claudeFiveHour?: VolumeForecast;
   claudeSevenDay?: VolumeForecast;
 }
+
+export interface Tip {
+  id: string;
+  severity: "info" | "warn";
+  title: string;
+  detail: string;
+  savingsUsd?: number; // notional, API-rate
+}
