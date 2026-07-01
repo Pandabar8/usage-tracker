@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { DashboardData } from "../lib/aggregate";
 import type { Tool } from "../lib/normalize";
 import Overview from "./Overview";
+import Tips from "./Tips";
 import TrendChart from "./TrendChart";
 import ByModel from "./ByModel";
 import ByProject from "./ByProject";
@@ -88,6 +89,7 @@ export default function Dashboard({ initial }: { initial: DashboardData }) {
         </button>
       </div>
       <Overview data={data} />
+      <Tips tips={data.tips} />
       <TrendChart data={data} />
       <div className="grid md:grid-cols-2 gap-8">
         <ByModel data={data} />
