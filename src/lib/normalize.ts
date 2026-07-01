@@ -50,3 +50,21 @@ export function totalTokens(r: UsageRecord): number {
     r.inputTokens + r.outputTokens + r.cacheWriteTokens + r.cacheReadTokens
   );
 }
+
+export interface WindowForecast {
+  willExhaust: boolean;
+  projectedPercentAtReset: number | null;
+  etaToLimit: string | null; // ISO timestamp the linear projection crosses 100%, or null
+}
+
+export interface VolumeForecast {
+  projectedTokens: number | null;
+  note: string;
+}
+
+export interface Forecast {
+  codexPrimary?: WindowForecast; // 5h
+  codexSecondary?: WindowForecast; // weekly
+  claudeFiveHour?: VolumeForecast;
+  claudeSevenDay?: VolumeForecast;
+}
