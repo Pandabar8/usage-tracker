@@ -2,7 +2,9 @@
 import {
   totalTokens,
   type ClaudeWindows,
+  type Forecast,
   type RateLimitSnapshot,
+  type Tip,
   type Tool,
   type UsageRecord,
 } from "./normalize";
@@ -71,6 +73,11 @@ export interface Rollups {
   dateRange: { start: string | null; end: string | null };
   codexQuota: RateLimitSnapshot | null;
   claudeWindows: ClaudeWindows;
+}
+
+export interface DashboardData extends Rollups {
+  forecast: Forecast;
+  tips: Tip[];
 }
 
 export function aggregate(

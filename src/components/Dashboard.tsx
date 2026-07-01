@@ -1,6 +1,6 @@
 // src/components/Dashboard.tsx
 import { useState } from "react";
-import type { Rollups } from "../lib/aggregate";
+import type { DashboardData } from "../lib/aggregate";
 import type { Tool } from "../lib/normalize";
 import Overview from "./Overview";
 import TrendChart from "./TrendChart";
@@ -10,8 +10,8 @@ import QuotaPanel from "./QuotaPanel";
 
 type ToolFilter = Tool | "all";
 
-export default function Dashboard({ initial }: { initial: Rollups }) {
-  const [data, setData] = useState<Rollups>(initial);
+export default function Dashboard({ initial }: { initial: DashboardData }) {
+  const [data, setData] = useState<DashboardData>(initial);
   const [tool, setTool] = useState<ToolFilter>("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
