@@ -26,6 +26,54 @@ function fmtWhen(iso: string): string {
 
 type SortKey = "startedAt" | "durationMs" | "turns" | "totalTokens" | "cost";
 
+// RFC 4180 field escaping: quote fields containing a comma, quote, or newline,
+// doubling any embedded quotes. Everything else passes through verbatim.
+function csvField(value: string | number): string {
+  const s = String(value);
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+const CSV_COLUMNS = [
+  "project",
+  "tool",
+  "models",
+  "startedAt",
+  "durationMs",
+  "turns",
+  "totalTokens",
+  "cost",
+] as const;
+
+function toCsv(rows: SessionSummary[]): string {
+  const lines = [CSV_COLUMNS.join(",")];
+  for (const s of rows) {
+    lines.push(
+      [
+        csvField(s.project),
+        csvField(s.tool),
+        csvField(s.models.join("; ")),
+        csvField(s.startedAt),
+        csvField(s.durationMs),
+        csvField(s.turns),
+        csvField(s.totalTokens),
+        csvField(s.cost),
+      ].join(","),
+    );
+  }
+  return lines.join("\r\n");
+}
+
+// Client-side download: build a Blob and click a temporary anchor. Nothing is
+// uploaded — the data never leaves the browser.
+function downloadBlob(filename: string, mime: string, content: string): void {
+  const url = URL.createObjectURL(new Blob([content], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function SessionsList({
   initial,
 }: {
@@ -69,6 +117,19 @@ export default function SessionsList({
     );
   }
 
+  // Export exactly what is on screen: the current filtered + sorted rows.
+  const stamp = new Date().toISOString().slice(0, 10);
+  function exportCsv() {
+    downloadBlob(`usage-sessions-${stamp}.csv`, "text/csv", toCsv(sorted));
+  }
+  function exportJson() {
+    downloadBlob(
+      `usage-sessions-${stamp}.json`,
+      "application/json",
+      JSON.stringify(sorted, null, 2),
+    );
+  }
+
   return (
     <>
       <div className="top">
@@ -78,20 +139,60 @@ export default function SessionsList({
             {sorted.length} sessions · notional cost at API rates
           </div>
         </div>
-        <button className="btn" onClick={() => load(readFilter(), true)}>
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="btn"
+            onClick={exportCsv}
+            disabled={sorted.length === 0}
           >
-            <path d="M23 4v6h-6M1 20v-6h6" />
-            <path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15" />
-          </svg>
-          {loading ? "Loading…" : "Refresh"}
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <path d="M7 10l5 5 5-5" />
+              <path d="M12 15V3" />
+            </svg>
+            Export CSV
+          </button>
+          <button
+            className="btn"
+            onClick={exportJson}
+            disabled={sorted.length === 0}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <path d="M7 10l5 5 5-5" />
+              <path d="M12 15V3" />
+            </svg>
+            Export JSON
+          </button>
+          <button className="btn" onClick={() => load(readFilter(), true)}>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M23 4v6h-6M1 20v-6h6" />
+              <path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15" />
+            </svg>
+            {loading ? "Loading…" : "Refresh"}
+          </button>
+        </div>
       </div>
 
       <div className="card" style={{ overflowX: "auto", padding: 0 }}>
