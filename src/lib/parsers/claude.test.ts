@@ -42,6 +42,9 @@ const compactionFixture = fileURLToPath(
 const splitUsageFixture = fileURLToPath(
   new URL("./__fixtures__/claude-split-usage.jsonl", import.meta.url),
 );
+const dupToolsFixture = fileURLToPath(
+  new URL("./__fixtures__/claude-dup-tools.jsonl", import.meta.url),
+);
 
 describe("parseClaudeFile session meta", () => {
   it("counts turns, tool calls, and compaction during the parse pass", () => {
@@ -98,5 +101,16 @@ describe("parseClaudeFile session meta", () => {
       cacheReadTokens: 40,
     });
     expect(sessions![0]).toMatchObject({ turns: 1, toolCalls: 1 });
+  });
+
+  it("keeps SessionMeta.toolCalls as the RAW count even when a turn repeats a tool name", () => {
+    const { sessions } = parseClaudeFile(dupToolsFixture);
+    // Two Bash tool_use blocks in one turn: toolCalls is the RAW count (2),
+    // while the message badge (parseClaudeMessages) dedups to one.
+    expect(sessions![0]).toMatchObject({
+      sessionId: "d1",
+      turns: 1,
+      toolCalls: 2,
+    });
   });
 });

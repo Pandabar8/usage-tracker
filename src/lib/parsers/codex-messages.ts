@@ -124,7 +124,9 @@ export function parseCodexMessages(path: string, sessionId: string): Message[] {
     const cid = typeof p.call_id === "string" ? p.call_id : "";
     if (cid && seenToolCalls.has(cid)) return true; // already counted from its other surface
     if (cid) seenToolCalls.add(cid);
-    pendingTools.push(name);
+    // Dedup names within the turn for the badges; the RAW call count lives on
+    // SessionMeta.toolCalls (codex.ts) and is intentionally not deduped.
+    if (!pendingTools.includes(name)) pendingTools.push(name);
     return true;
   };
   let lastUserText = "";

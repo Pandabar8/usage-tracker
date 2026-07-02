@@ -151,13 +151,18 @@ describe("parseCodexMessages tool coverage", () => {
     }
     // The mcp_tool_call_end for call_mcp and the patch_apply_end for call_patch
     // duplicate their response_item tool call by call_id, so they are NOT counted
-    // again: resolve_library_id appears once (its function_call), and the raw
-    // toolUses length is 8 (call_1, call_2, web_search, call_3, call_mcp,
-    // call_patch, call_solomcp, call_solopatch) — NOT 10.
+    // again. On top of the call_id dedup, tool NAMES are deduped within the turn
+    // for the badges: apply_patch appears on three distinct calls but shows ONCE,
+    // so the six distinct names remain (shell, apply_patch, web_search,
+    // tool_search, resolve_library_id, srv.solo_tool). SessionMeta.toolCalls stays
+    // the RAW count of 8 (asserted in codex.test.ts).
     expect(
       assistant.toolUses.filter((t) => t === "resolve_library_id"),
     ).toHaveLength(1);
-    expect(assistant.toolUses).toHaveLength(8);
+    expect(assistant.toolUses.filter((t) => t === "apply_patch")).toHaveLength(
+      1,
+    );
+    expect(assistant.toolUses).toHaveLength(6);
   });
 });
 

@@ -13,6 +13,9 @@ const fixture = fileURLToPath(
 const splitUsageFixture = fileURLToPath(
   new URL("./__fixtures__/claude-split-usage.jsonl", import.meta.url),
 );
+const dupToolsFixture = fileURLToPath(
+  new URL("./__fixtures__/claude-dup-tools.jsonl", import.meta.url),
+);
 
 describe("parseClaudeMessages", () => {
   it("merges the split message.id turn (thinking/text/tool_use) into ONE assistant message with tokens counted once", () => {
@@ -118,6 +121,15 @@ describe("parseClaudeMessages split-usage last-wins", () => {
       // FINAL line usage 10 + 20 + 30 + 40 = 100, not the intermediate 35 or a sum.
       tokens: 100,
     });
+  });
+});
+
+describe("parseClaudeMessages toolUses dedup within a turn", () => {
+  it("collapses repeated tool names in one turn to a single badge", () => {
+    const messages = parseClaudeMessages(dupToolsFixture);
+    expect(messages).toHaveLength(1);
+    // Two Bash tool_use blocks across the split lines collapse to ONE badge.
+    expect(messages[0].toolUses).toEqual(["Bash"]);
   });
 });
 

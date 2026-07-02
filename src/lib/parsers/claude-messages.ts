@@ -38,6 +38,13 @@ function extractUserText(content: any): string {
   return "";
 }
 
+// Adds a tool name to a per-turn badge list without duplicates, so a turn that
+// calls the same tool twice shows ONE badge. (The RAW call count lives on
+// SessionMeta.toolCalls in claude.ts and is intentionally not deduped.)
+function pushUnique(arr: string[], name: string): void {
+  if (!arr.includes(name)) arr.push(name);
+}
+
 function extractAssistant(content: any): { text: string; toolUses: string[] } {
   const toolUses: string[] = [];
   let text = "";
@@ -47,7 +54,7 @@ function extractAssistant(content: any): { text: string; toolUses: string[] } {
       if (c.type === "text" && typeof c.text === "string") {
         text += (text ? "\n" : "") + c.text;
       } else if (c.type === "tool_use" && typeof c.name === "string") {
-        toolUses.push(c.name);
+        pushUnique(toolUses, c.name);
       }
     }
   } else if (typeof content === "string") {
@@ -128,7 +135,7 @@ export function parseClaudeMessages(path: string): Message[] {
       if (msgId && msgId === lastAssistantId && lastAssistantIdx >= 0) {
         const prev = messages[lastAssistantIdx];
         if (text) prev.text += (prev.text ? "\n" : "") + text;
-        for (const t of toolUses) prev.toolUses.push(t);
+        for (const t of toolUses) pushUnique(prev.toolUses, t);
         if (model) prev.model = model;
         if (tokens !== undefined) prev.tokens = tokens; // last-wins; identical here
         continue;
