@@ -394,6 +394,98 @@ describe("scan session meta and index", () => {
     expect(codex.every((r) => r.sessionId === P)).toBe(true);
   });
 
+  it("does not inflate a forked session's turn count with replayed turns", () => {
+    // A fork REPLAYS the parent's session_meta AND a prefix of its turns under the
+    // SAME id in a new file. mergeMeta summed turns across every file, so the
+    // parent's authoritative turns were inflated by the replay. The turn count must
+    // match the authoritative (highest-max) file's turns, consistent with how the
+    // tokens are reconciled to that same file.
+    const P = "019e2f27-0000-7000-a000-00000000ab01";
+    const F = "019e39b8-0000-7000-a000-00000000ab02";
+    const meta = (ts: string, id: string, forked?: string) =>
+      JSON.stringify({
+        timestamp: ts,
+        type: "session_meta",
+        payload: forked
+          ? { id, forked_from_id: forked, cwd: "/Users/me/FinApp" }
+          : { id, cwd: "/Users/me/FinApp" },
+      });
+    const turn = (ts: string) =>
+      JSON.stringify({
+        timestamp: ts,
+        type: "turn_context",
+        payload: { model: "gpt-5.5", cwd: "/Users/me/FinApp" },
+      });
+    const assistant = (ts: string, text: string) =>
+      JSON.stringify({
+        timestamp: ts,
+        type: "response_item",
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text }],
+        },
+      });
+    const tc = (ts: string, input: number, total: number) =>
+      JSON.stringify({
+        timestamp: ts,
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: {
+            total_token_usage: {
+              input_tokens: input,
+              cached_input_tokens: 0,
+              output_tokens: 0,
+              reasoning_output_tokens: 0,
+              total_tokens: total,
+            },
+          },
+        },
+      });
+
+    // Parent P: TWO real assistant turns, cumulative total peaks at 10000 → authoritative.
+    const parent = [
+      meta("2026-05-16T00:00:00.000Z", P),
+      turn("2026-05-16T00:00:30.000Z"),
+      assistant("2026-05-16T00:01:00.000Z", "a1"),
+      tc("2026-05-16T00:01:30.000Z", 1000, 1000),
+      assistant("2026-05-16T00:02:00.000Z", "a2"),
+      tc("2026-05-16T00:02:30.000Z", 10000, 10000),
+    ].join("\n");
+    // Fork: own id F, then replays P's meta + ONE of P's turns (a prefix) + a
+    // token prefix peaking at 5000 (< 10000, so P's records here are dropped).
+    const fork = [
+      meta("2026-05-18T00:00:00.000Z", F, P),
+      turn("2026-05-18T00:00:00.050Z"),
+      meta("2026-05-18T00:00:00.100Z", P),
+      assistant("2026-05-18T00:00:00.200Z", "a1"),
+      tc("2026-05-18T00:00:00.300Z", 1000, 1000),
+      tc("2026-05-18T00:00:00.400Z", 5000, 5000),
+    ].join("\n");
+
+    mkdirSync(join(codexDir, "2026", "05", "16"), { recursive: true });
+    mkdirSync(join(codexDir, "2026", "05", "18"), { recursive: true });
+    writeFileSync(
+      join(codexDir, "2026", "05", "16", "rollout-parent.jsonl"),
+      parent,
+    );
+    writeFileSync(
+      join(codexDir, "2026", "05", "18", "rollout-fork.jsonl"),
+      fork,
+    );
+
+    const { records, sessionMeta } = scan({ claudeDir, codexDir });
+    // Canonical: the parent authoritative file has exactly two assistant turns
+    // (a1, a2). The replay's one turn must NOT be summed on top (would give 3).
+    expect(sessionMeta.get(`codex:${P}`)?.turns).toBe(2);
+    // Token reconciliation must still hold: only the parent's records survive.
+    const codexP = records.filter(
+      (r) => r.tool === "codex" && r.sessionId === P,
+    );
+    expect(codexP.reduce((acc, r) => acc + totalTokens(r), 0)).toBe(10000);
+  });
+
   it("breaks an authoritative-file tie toward the earliest (parent) file and warns", () => {
     // Two files carry the SAME id reaching the SAME max cumulative total (5000).
     // Selection must be deterministic regardless of scan order: the earliest-
