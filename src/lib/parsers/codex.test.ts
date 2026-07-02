@@ -107,3 +107,89 @@ describe("parseCodexFile", () => {
     });
   });
 });
+
+const codexMessages = fileURLToPath(
+  new URL("./__fixtures__/codex-messages.jsonl", import.meta.url),
+);
+const codexMulti = fileURLToPath(
+  new URL("./__fixtures__/codex-multi-session.jsonl", import.meta.url),
+);
+
+describe("parseCodexFile session meta", () => {
+  it("counts assistant turns, function calls, and models during the parse pass", () => {
+    const { records, sessions } = parseCodexFile(codexMessages);
+    expect(records).toHaveLength(1); // one token_count with forward progress
+    expect(sessions).toHaveLength(1);
+    expect(sessions![0]).toMatchObject({
+      sessionId: "c9",
+      tool: "codex",
+      turns: 2, // one response_item assistant + one agent_message fallback turn
+      toolCalls: 2, // two function_call items
+      models: ["gpt-5.3-codex"],
+      startedAt: "2026-06-11T09:00:00.000Z",
+      endedAt: "2026-06-11T09:00:25.000Z",
+    });
+    expect(sessions![0].compaction).toBeUndefined();
+  });
+});
+
+describe("parseCodexFile across a multi-session rollout", () => {
+  it("emits one SessionMeta per distinct id with per-id counts, sharing one continuous token counter", () => {
+    const { records, sessions } = parseCodexFile(codexMulti);
+    expect(sessions).toHaveLength(2);
+
+    const a = sessions!.find(
+      (s) => s.sessionId === "019e39b9-0000-7000-a000-0000000000a1",
+    )!;
+    const b = sessions!.find(
+      (s) => s.sessionId === "019e2f27-0000-7000-a000-0000000000b2",
+    )!;
+    expect(a).toMatchObject({
+      tool: "codex",
+      turns: 1, // one response_item assistant
+      toolCalls: 1, // one function_call
+      models: ["gpt-5.5"],
+      startedAt: "2026-06-11T09:00:00.000Z",
+      endedAt: "2026-06-11T09:00:06.000Z",
+    });
+    expect(b).toMatchObject({
+      tool: "codex",
+      turns: 1, // one agent_message fallback turn
+      toolCalls: 1, // one function_call
+      models: ["gpt-5.3-codex"],
+      startedAt: "2026-06-11T09:00:10.000Z",
+      endedAt: "2026-06-11T09:00:16.000Z",
+    });
+
+    // One record per token_count with forward progress, attributed to the active
+    // id at that point.
+    expect(records).toHaveLength(2);
+    const ra = records.find(
+      (r) => r.sessionId === "019e39b9-0000-7000-a000-0000000000a1",
+    )!;
+    const rb = records.find(
+      (r) => r.sessionId === "019e2f27-0000-7000-a000-0000000000b2",
+    )!;
+    // Session A cumulative 1000 (delta from 0): input 900 - cached 100 = 800,
+    // cacheRead 100, output 100.
+    expect(ra).toMatchObject({
+      model: "gpt-5.5",
+      inputTokens: 800,
+      outputTokens: 100,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 100,
+      reasoningTokens: 0,
+    });
+    // Session B cumulative 1600 (delta 600, NOT 1600 — the baseline is never
+    // reset on session_meta): input 600 - cached 300 = 300, cacheRead 300,
+    // output 0. A reset would have produced inputTokens 1100.
+    expect(rb).toMatchObject({
+      model: "gpt-5.3-codex",
+      inputTokens: 300,
+      outputTokens: 0,
+      cacheWriteTokens: 0,
+      cacheReadTokens: 300,
+      reasoningTokens: 0,
+    });
+  });
+});

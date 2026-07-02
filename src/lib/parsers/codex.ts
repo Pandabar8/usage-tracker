@@ -5,8 +5,10 @@ import {
   type ParsedFile,
   type RateLimitSnapshot,
   type RateLimitWindow,
+  type SessionMeta,
   type UsageRecord,
 } from "../normalize";
+import { extractCodexText, isSyntheticCodexContext } from "./codex-messages";
 
 function toWindow(w: any): RateLimitWindow | null {
   if (!w || typeof w.used_percent !== "number") return null;
@@ -37,18 +39,78 @@ function readCumulative(info: any): Cumulative | null {
   };
 }
 
+// Per-session structural accumulator, mutated during the pass.
+interface SessionAcc {
+  sessionId: string;
+  turns: number;
+  toolCalls: number;
+  models: Set<string>;
+  startedAt: string;
+  endedAt: string;
+}
+
 export function parseCodexFile(path: string): ParsedFile {
   const records: UsageRecord[] = [];
   let quota: RateLimitSnapshot | null = null;
   let model = "unknown";
   let cwd: string | null = null;
-  let sessionId = "";
+
+  // ONE continuous cumulative baseline for the WHOLE file. A single rollout can
+  // contain several session_meta ids (e.g. a fork that replays a parent session),
+  // but they all share ONE monotonic `total_token_usage` counter; resetting `prev`
+  // to zero on a session switch would turn every subsequent event's delta into the
+  // full running cumulative and massively over-count. Only session ATTRIBUTION
+  // switches on session_meta; a genuine counter restart is still handled solely by
+  // the `cur.total < prev.total` reset branch below.
   let prev: Cumulative = {
     input: 0,
     cached: 0,
     output: 0,
     reasoning: 0,
     total: 0,
+  };
+
+  // A rollout can contain MULTIPLE distinct session ids. `activeId` is the id of
+  // the most recent session_meta; every record and every meta count is attributed
+  // to it, and one SessionMeta is emitted per distinct id.
+  const sessions = new Map<string, SessionAcc>();
+  let activeId = "";
+  function accFor(id: string): SessionAcc {
+    let a = sessions.get(id);
+    if (!a) {
+      a = {
+        sessionId: id,
+        turns: 0,
+        toolCalls: 0,
+        models: new Set(),
+        startedAt: "",
+        endedAt: "",
+      };
+      sessions.set(id, a);
+    }
+    return a;
+  }
+
+  // Assistant-turn detection mirrors parseCodexMessages so SessionMeta.turns never
+  // contradicts the rendered detail: a `response_item` assistant closes a turn, and
+  // an `event_msg.agent_message` is counted only when its turn produced no assistant
+  // response_item (flushed at the next user turn, at a session switch, or at EOF).
+  let lastUserText = "";
+  let sawAssistant = false;
+  let pendingAgent = false;
+  const flushTurn = () => {
+    if (pendingAgent && !sawAssistant && activeId) accFor(activeId).turns += 1;
+    pendingAgent = false;
+  };
+  const resetTurnState = () => {
+    lastUserText = "";
+    sawAssistant = false;
+    pendingAgent = false;
+  };
+  const openUserTurn = (text: string) => {
+    flushTurn();
+    lastUserText = text;
+    sawAssistant = false;
   };
 
   const lines = readFileSync(path, "utf8").split("\n");
@@ -63,21 +125,65 @@ export function parseCodexFile(path: string): ParsedFile {
       continue;
     }
 
+    const ts = String(obj.timestamp ?? "");
+
     if (obj.type === "session_meta") {
+      const newId = obj.payload?.id ? String(obj.payload.id) : "";
+      if (newId && newId !== activeId) {
+        flushTurn(); // close the OLD active session's dangling agent turn first
+        activeId = newId;
+        resetTurnState(); // the new session starts a fresh turn stream
+      }
       cwd = obj.payload?.cwd ?? cwd;
-      sessionId = obj.payload?.id ?? sessionId;
-      // Do NOT reset the cumulative baseline here. A single Codex rollout file
-      // can contain many session_meta lines that all share ONE continuous,
-      // monotonic `total_token_usage` counter; resetting `prev` to zero on each
-      // would turn every subsequent event's delta into the full running
-      // cumulative and massively over-count. A genuine counter restart is
-      // already handled by the `cur.total < prev.total` reset branch below.
+      // NB: `prev` is deliberately NOT reset here (continuous counter).
+    }
+
+    // Attribute every line's timestamp to the active session's span (covers
+    // session_meta itself, so a switched-in session's span starts at its meta).
+    if (activeId && ts) {
+      const a = accFor(activeId);
+      if (!a.startedAt || ts < a.startedAt) a.startedAt = ts;
+      if (ts > a.endedAt) a.endedAt = ts;
+    }
+
+    if (obj.type === "session_meta") continue;
+
+    if (obj.type === "turn_context") {
+      if (obj.payload?.model) {
+        model = obj.payload.model;
+        if (activeId) accFor(activeId).models.add(model);
+      }
+      if (obj.payload?.cwd) cwd = obj.payload.cwd;
       continue;
     }
 
-    if (obj.type === "turn_context") {
-      if (obj.payload?.model) model = obj.payload.model;
-      if (obj.payload?.cwd) cwd = obj.payload.cwd;
+    if (obj.type === "response_item") {
+      const pt = obj.payload?.type;
+      if (pt === "function_call") {
+        if (activeId) accFor(activeId).toolCalls += 1;
+      } else if (pt === "message" && obj.payload?.role === "assistant") {
+        if (activeId) accFor(activeId).turns += 1;
+        sawAssistant = true;
+        pendingAgent = false;
+      } else if (pt === "message" && obj.payload?.role === "user") {
+        const text = extractCodexText(obj.payload.content);
+        // Skip synthetic context injection so turn boundaries match the detail.
+        if (text && !isSyntheticCodexContext(text) && text !== lastUserText) {
+          openUserTurn(text);
+        }
+      }
+      continue;
+    }
+
+    if (obj.type === "event_msg" && obj.payload?.type === "user_message") {
+      openUserTurn(
+        typeof obj.payload.message === "string" ? obj.payload.message : "",
+      );
+      continue;
+    }
+
+    if (obj.type === "event_msg" && obj.payload?.type === "agent_message") {
+      pendingAgent = true;
       continue;
     }
 
@@ -121,7 +227,7 @@ export function parseCodexFile(path: string): ParsedFile {
         timestamp: String(obj.timestamp ?? ""),
         model,
         project: projectFromCwd(cwd),
-        sessionId,
+        sessionId: activeId,
         inputTokens: Math.max(0, d.input - d.cached),
         outputTokens: d.output,
         cacheWriteTokens: 0,
@@ -131,5 +237,17 @@ export function parseCodexFile(path: string): ParsedFile {
     }
   }
 
-  return { records, quota };
+  flushTurn(); // count a trailing agent_message-only turn for the final session
+
+  const sessionsOut: SessionMeta[] = [...sessions.values()].map((a) => ({
+    sessionId: a.sessionId,
+    tool: "codex",
+    turns: a.turns,
+    toolCalls: a.toolCalls,
+    models: [...a.models],
+    startedAt: a.startedAt,
+    endedAt: a.endedAt,
+  }));
+
+  return { records, quota, sessions: sessionsOut };
 }
