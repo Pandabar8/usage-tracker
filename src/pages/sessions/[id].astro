@@ -1,0 +1,47 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import SessionDetail from '../../components/SessionDetail.tsx';
+import { scan } from '../../lib/scan';
+import { groupSessions } from '../../lib/sessions';
+import { defaultPricing } from '../../lib/pricing';
+import { parseClaudeMessages } from '../../lib/parsers/claude-messages';
+import { parseCodexMessages } from '../../lib/parsers/codex-messages';
+import type { SessionDetail as SessionDetailData } from '../../lib/normalize';
+
+export const prerender = false;
+
+// Astro's `[id]` param is the composite route key `${tool}:${sessionId}`. Decode
+// defensively so a percent-encoded `${tool}%3A${sessionId}` link also resolves
+// (decodeURIComponent is a no-op on an already-decoded value).
+const rawKey = Astro.params.id;
+const key = rawKey ? decodeURIComponent(rawKey) : undefined;
+const { records, sessionMeta, sessionIndex } = scan();
+
+let detail: SessionDetailData | null = null;
+const entry = key ? sessionIndex.get(key) : undefined;
+if (entry) {
+  try {
+    let messages =
+      entry.tool === 'claude'
+        ? entry.files.flatMap((file) => parseClaudeMessages(file))
+        : entry.files.flatMap((file) =>
+            parseCodexMessages(file, entry.sessionId),
+          );
+    messages.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    messages = messages.map((m, i) => ({ ...m, index: i }));
+    const summary = groupSessions(records, sessionMeta, defaultPricing).find(
+      (s) => s.key === key,
+    );
+    if (summary) detail = { summary, messages };
+  } catch {
+    detail = null;
+  }
+}
+
+if (!detail) {
+  return new Response('Session not found', { status: 404 });
+}
+---
+<Layout title="Session">
+  <SessionDetail client:load detail={detail} />
+</Layout>
