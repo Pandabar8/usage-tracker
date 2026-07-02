@@ -53,3 +53,12 @@ export function calendarGrid(byDay: DayPoint[], nowMs: number): CalendarDay[] {
   }
   return out;
 }
+
+import type { DashboardData } from "./aggregate";
+
+// Everything a page-content island renders: the dashboard rollups plus the two
+// chart-only aggregates that need raw records / byDay to compute.
+export interface BoardData extends DashboardData {
+  peakHours: number[];
+  calendar: CalendarDay[];
+}
