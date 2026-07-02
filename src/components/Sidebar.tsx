@@ -64,6 +64,8 @@ export default function Sidebar({
     from: "",
     to: "",
   });
+  // Collapsed by default; the toggle only shows on narrow screens (CSS-gated).
+  const [open, setOpen] = useState(false);
   useEffect(() => setFilter(readFilter()), []);
 
   const setTool = (tool: ToolFilter) => setFilter(writeFilter({ tool }));
@@ -75,7 +77,7 @@ export default function Sidebar({
   const fiveH = Math.round(codexQuota?.primary?.usedPercent ?? 0);
 
   return (
-    <aside>
+    <aside className={open ? "open" : ""}>
       <div className="brand">
         <span className="logo">
           <svg
@@ -92,80 +94,105 @@ export default function Sidebar({
         </span>
         <b>Usage Tracker</b>
         <span className="v">v0.1</span>
+        <button
+          className="side-toggle"
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            {open ? (
+              <path d="M18 6 6 18M6 6l12 12" />
+            ) : (
+              <path d="M3 12h18M3 6h18M3 18h18" />
+            )}
+          </svg>
+        </button>
       </div>
 
-      <div className="filters">
-        <p className="lbl">Agent</p>
-        <div className="seg">
-          {(["all", "claude", "codex"] as ToolFilter[]).map((t) => (
-            <button
-              key={t}
-              className={filter.tool === t ? "on" : ""}
-              onClick={() => setTool(t)}
-            >
-              {t === "all" ? "All" : t === "claude" ? "Claude" : "Codex"}
-            </button>
-          ))}
-        </div>
-        <p className="lbl">Range</p>
-        <div className="chips">
-          {RANGES.map((r) => (
-            <button
-              key={r.label}
-              className={range === r.label ? "on" : ""}
-              onClick={() => setRange(r.days)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <nav>
-        {Object.entries(NAV).map(([section, items], i) => (
-          <div key={section} style={{ display: "contents" }}>
-            {i > 0 && <div className="navsec">{section}</div>}
-            {items.map((it) => (
-              <a
-                key={it.href}
-                href={it.href}
-                className={isActive(pathname, it.href) ? "active" : ""}
+      <div className="side-body">
+        <div className="filters">
+          <p className="lbl">Agent</p>
+          <div className="seg">
+            {(["all", "claude", "codex"] as ToolFilter[]).map((t) => (
+              <button
+                key={t}
+                className={filter.tool === t ? "on" : ""}
+                onClick={() => setTool(t)}
               >
-                {it.label}
-              </a>
+                {t === "all" ? "All" : t === "claude" ? "Claude" : "Codex"}
+              </button>
             ))}
           </div>
-        ))}
-      </nav>
+          <p className="lbl">Range</p>
+          <div className="chips">
+            {RANGES.map((r) => (
+              <button
+                key={r.label}
+                className={range === r.label ? "on" : ""}
+                onClick={() => setRange(r.days)}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
-      <div className="side-quota">
-        <div className="row">
-          <span>Codex weekly</span>
-          <b className="mono">{weekly}%</b>
-        </div>
-        <div className="bar">
-          <i
-            style={{
-              width: `${weekly}%`,
-              background: "linear-gradient(90deg,var(--codex),var(--codex-2))",
-            }}
-          />
-        </div>
-        <div className="row" style={{ marginTop: 10 }}>
-          <span>Codex 5h</span>
-          <b className="mono">{fiveH}%</b>
-        </div>
-        <div className="bar">
-          <i
-            style={{
-              width: `${fiveH}%`,
-              background: "linear-gradient(90deg,var(--codex),var(--codex-2))",
-            }}
-          />
-        </div>
-        <div className="side-foot">
-          <span className="dot" />
-          local · read-only · no upload
+        <nav>
+          {Object.entries(NAV).map(([section, items], i) => (
+            <div key={section} style={{ display: "contents" }}>
+              {i > 0 && <div className="navsec">{section}</div>}
+              {items.map((it) => (
+                <a
+                  key={it.href}
+                  href={it.href}
+                  className={isActive(pathname, it.href) ? "active" : ""}
+                >
+                  {it.label}
+                </a>
+              ))}
+            </div>
+          ))}
+        </nav>
+
+        <div className="side-quota">
+          <div className="row">
+            <span>Codex weekly</span>
+            <b className="mono">{weekly}%</b>
+          </div>
+          <div className="bar">
+            <i
+              style={{
+                width: `${weekly}%`,
+                background:
+                  "linear-gradient(90deg,var(--codex),var(--codex-2))",
+              }}
+            />
+          </div>
+          <div className="row" style={{ marginTop: 10 }}>
+            <span>Codex 5h</span>
+            <b className="mono">{fiveH}%</b>
+          </div>
+          <div className="bar">
+            <i
+              style={{
+                width: `${fiveH}%`,
+                background:
+                  "linear-gradient(90deg,var(--codex),var(--codex-2))",
+              }}
+            />
+          </div>
+          <div className="side-foot">
+            <span className="dot" />
+            local · read-only · no upload
+          </div>
         </div>
       </div>
     </aside>

@@ -37,6 +37,10 @@ body {
   font-size: 14px;
   line-height: 1.5;
   letter-spacing: -0.005em;
+  /* Never let the page body scroll sideways. `clip` (not `hidden`) avoids
+     creating a scroll container, so the sticky sidebar keeps working. Wide
+     tables and charts scroll inside their own overflow-x containers instead. */
+  overflow-x: clip;
   background-image:
     radial-gradient(1100px 600px at 80% -10%, #a486f70e, transparent 60%),
     radial-gradient(900px 500px at 0% 8%, #e88a4e0b, transparent 55%);
@@ -59,6 +63,10 @@ aside {
   position: sticky;
   top: 0;
   height: 100vh;
+  /* Let the grid track shrink to the viewport instead of the content's
+     min-content width, which otherwise blows the single-column mobile layout
+     wider than the screen. */
+  min-width: 0;
   border-right: 1px solid var(--line);
   background: linear-gradient(180deg, #12151b, #0e1116);
   display: flex;
@@ -98,6 +106,34 @@ aside {
   border-radius: 5px;
   padding: 1px 5px;
   margin-left: auto;
+}
+
+/* Collapsible body of the sidebar (filters + nav + quota). On desktop it fills
+   the aside so `.side-quota`'s margin-top:auto pins it to the bottom; on mobile
+   it hides behind the toggle. */
+.side-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+/* Hamburger toggle: hidden on desktop, shown in the mobile top bar. */
+.side-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line-2);
+  border-radius: 9px;
+  background: var(--panel-2);
+  color: var(--ink);
+  cursor: pointer;
+}
+.side-toggle svg {
+  width: 18px;
+  height: 18px;
 }
 
 .filters {
@@ -255,6 +291,10 @@ nav a.active svg {
 main {
   padding: 22px 26px 60px;
   max-width: 1280px;
+  /* Same grid-item shrink fix as `aside`: without it a wide child (chart or
+     table) forces the 1fr track past the viewport width. Wide content scrolls
+     inside its own overflow-x container instead. */
+  min-width: 0;
 }
 .top {
   display: flex;
@@ -755,4 +795,53 @@ a.back {
 }
 a.back:hover {
   text-decoration: underline;
+}
+
+/* --- Responsive shell: collapse the two-column layout on tablet/phone. Placed
+   last so these rules win over the earlier 1080px grid breakpoints. --- */
+@media (max-width: 1024px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+  aside {
+    position: static;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+    padding: 12px 14px;
+  }
+  .brand {
+    padding: 0;
+  }
+  .side-toggle {
+    display: inline-flex;
+  }
+  .side-body {
+    display: none;
+    flex: none;
+    margin-top: 12px;
+  }
+  aside.open .side-body {
+    display: flex;
+  }
+  main {
+    padding: 18px 16px 48px;
+  }
+  .top {
+    flex-wrap: wrap;
+  }
+  .tree {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .cards4 {
+    grid-template-columns: 1fr;
+  }
+  .tree {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  main {
+    padding: 16px 12px 40px;
+  }
 }
