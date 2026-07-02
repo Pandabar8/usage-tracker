@@ -1,27 +1,32 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import Dashboard from '../components/Dashboard.tsx';
+import OverviewBoard from '../components/OverviewBoard.tsx';
 import { scan } from '../lib/scan';
+import { applyFilters } from '../lib/filters';
 import { aggregate, claudeWindows } from '../lib/aggregate';
+import { peakHours, calendarGrid } from '../lib/charts';
 import { defaultPricing } from '../lib/pricing';
 import { buildForecast } from '../lib/forecast';
 import { buildTips } from '../lib/tips';
-import { getRetention, isRetentionRisky, effectiveRetentionDays } from '../lib/settings';
 
 export const prerender = false;
 
 const now = Date.now();
 const { records, codexQuota } = scan();
-// Windows, forecast, and tips are computed from the UNFILTERED records so they
-// reflect current account state regardless of any filter applied later.
+// Windows, forecast, tips reflect current account state (unfiltered).
 const windows = claudeWindows(records, now);
-const rollups = aggregate(records, codexQuota, defaultPricing, windows);
 const forecast = buildForecast(records, codexQuota, now);
 const tips = buildTips(records, forecast, defaultPricing);
-const info = getRetention();
-const retention = { risky: isRetentionRisky(info), days: effectiveRetentionDays(info) };
-const initial = { ...rollups, forecast, tips };
+const filtered = applyFilters(records, Astro.url.searchParams);
+const rollups = aggregate(filtered, codexQuota, defaultPricing, windows);
+const initial = {
+  ...rollups,
+  forecast,
+  tips,
+  peakHours: peakHours(filtered),
+  calendar: calendarGrid(rollups.byDay, now),
+};
 ---
 <Layout>
-  <Dashboard client:load initial={initial} retention={retention} />
+  <OverviewBoard client:load initial={initial} />
 </Layout>
