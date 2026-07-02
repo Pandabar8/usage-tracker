@@ -1,0 +1,37 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getRetention, isRetentionRisky, effectiveRetentionDays } from '../lib/settings';
+
+export const prerender = false;
+
+const info = getRetention();
+const days = effectiveRetentionDays(info);
+const risky = isRetentionRisky(info);
+---
+<Layout title="Settings">
+  <div class="top">
+    <div>
+      <h1>Settings</h1>
+      <div class="sub">read-only in v1 · controls coming later</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h3>Theme</h3>
+    <p class="hint">Refined dark. Light theme is out of scope for v1.</p>
+  </div>
+
+  <div class="card">
+    <h3>Retention</h3>
+    <p class="hint">Claude usage-history retention window.</p>
+    <div class="qrow">
+      <span class="qlab">Current</span>
+      <span class="qmeta">{days} days{risky ? ' · at risk of data loss' : ' · safe'}</span>
+    </div>
+    {risky && (
+      <p class="note">
+        Run <span class="mono">npm run fix-retention</span> to raise the retention window so past usage is not lost.
+      </p>
+    )}
+  </div>
+</Layout>
