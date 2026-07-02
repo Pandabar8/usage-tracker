@@ -40,3 +40,56 @@ describe("peakHours", () => {
     expect(peakHours([])).toEqual(new Array(24).fill(0));
   });
 });
+
+import { calendarGrid } from "./charts";
+import type { DayPoint } from "./aggregate";
+
+function day(p: Partial<DayPoint>): DayPoint {
+  return {
+    date: "2026-06-01",
+    claudeTokens: 0,
+    codexTokens: 0,
+    claudeCost: 0,
+    codexCost: 0,
+    ...p,
+  };
+}
+
+describe("calendarGrid", () => {
+  it("gap-fills missing days and orders ascending, ending at last data day", () => {
+    const byDay = [
+      day({ date: "2026-06-03", codexTokens: 50 }),
+      day({ date: "2026-06-01", claudeTokens: 100 }),
+    ];
+    const now = Date.parse("2026-06-03T12:00:00.000Z");
+    expect(calendarGrid(byDay, now)).toEqual([
+      { date: "2026-06-01", claudeTokens: 100, codexTokens: 0, total: 100 },
+      { date: "2026-06-02", claudeTokens: 0, codexTokens: 0, total: 0 },
+      { date: "2026-06-03", claudeTokens: 0, codexTokens: 50, total: 50 },
+    ]);
+  });
+
+  it("extends the grid to the UTC date of nowMs when it is past the last data day", () => {
+    const byDay = [day({ date: "2026-06-01", claudeTokens: 10 })];
+    const now = Date.parse("2026-06-04T00:00:00.000Z");
+    const grid = calendarGrid(byDay, now);
+    expect(grid.map((d) => d.date)).toEqual([
+      "2026-06-01",
+      "2026-06-02",
+      "2026-06-03",
+      "2026-06-04",
+    ]);
+    expect(grid[0]).toEqual({
+      date: "2026-06-01",
+      claudeTokens: 10,
+      codexTokens: 0,
+      total: 10,
+    });
+  });
+
+  it("returns an empty array for no days", () => {
+    expect(calendarGrid([], Date.parse("2026-06-04T00:00:00.000Z"))).toEqual(
+      [],
+    );
+  });
+});

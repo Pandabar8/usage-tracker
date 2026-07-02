@@ -13,3 +13,43 @@ export function peakHours(records: UsageRecord[]): number[] {
   }
   return hours;
 }
+
+import type { DayPoint } from "./aggregate";
+
+export interface CalendarDay {
+  date: string;
+  claudeTokens: number;
+  codexTokens: number;
+  total: number;
+}
+
+const DAY_MS = 86400000;
+const utcDate = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+
+// Continuous daily grid (UTC) so the heatmap has no holes. Spans the earliest
+// byDay date through the later of the last byDay date and today (from nowMs).
+export function calendarGrid(byDay: DayPoint[], nowMs: number): CalendarDay[] {
+  if (byDay.length === 0) return [];
+  const sorted = [...byDay].sort((a, b) => a.date.localeCompare(b.date));
+  const start = sorted[0].date;
+  const lastData = sorted[sorted.length - 1].date;
+  const today = utcDate(nowMs);
+  const end = today > lastData ? today : lastData;
+  const map = new Map(sorted.map((d) => [d.date, d]));
+
+  const out: CalendarDay[] = [];
+  const endMs = Date.parse(`${end}T00:00:00.000Z`);
+  for (let t = Date.parse(`${start}T00:00:00.000Z`); t <= endMs; t += DAY_MS) {
+    const date = utcDate(t);
+    const d = map.get(date);
+    const claudeTokens = d?.claudeTokens ?? 0;
+    const codexTokens = d?.codexTokens ?? 0;
+    out.push({
+      date,
+      claudeTokens,
+      codexTokens,
+      total: claudeTokens + codexTokens,
+    });
+  }
+  return out;
+}
