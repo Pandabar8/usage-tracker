@@ -1,6 +1,11 @@
 // src/lib/aggregate.test.ts
 import { describe, it, expect } from "vitest";
-import { aggregate, claudeWindows } from "./aggregate";
+import {
+  aggregate,
+  cacheHitRate,
+  claudeWindows,
+  modelStats,
+} from "./aggregate";
 import type { UsageRecord } from "./normalize";
 import type { PricingTable } from "./pricing";
 
@@ -154,5 +159,79 @@ describe("claudeWindows", () => {
     );
     expect(w.fiveHourTokens).toBe(0);
     expect(w.sevenDayTokens).toBe(0);
+  });
+});
+
+const statsPricing: PricingTable = {
+  "claude-opus-4-8": { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
+  "gpt-5.3-codex": { input: 1.75, output: 14, cacheWrite: 0, cacheRead: 0.175 },
+};
+
+describe("cacheHitRate", () => {
+  it("computes the cache-read share of read-side tokens", () => {
+    expect(cacheHitRate(100, 300)).toBe(0.75); // 300 / (100 + 300)
+    expect(cacheHitRate(200, 800)).toBe(0.8); // 800 / 1000
+  });
+  it("returns 0 when there are no read-side tokens", () => {
+    expect(cacheHitRate(0, 0)).toBe(0);
+    expect(cacheHitRate(100, 0)).toBe(0);
+  });
+});
+
+describe("modelStats", () => {
+  const records = [
+    rec({
+      sessionId: "s1",
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheWriteTokens: 200,
+      cacheReadTokens: 300,
+    }),
+    rec({ sessionId: "s2", inputTokens: 10, outputTokens: 5 }),
+    rec({
+      tool: "codex",
+      model: "gpt-5.3-codex",
+      sessionId: "c1",
+      inputTokens: 200,
+      outputTokens: 100,
+      cacheReadTokens: 800,
+      reasoningTokens: 40,
+    }),
+  ];
+  const stats = modelStats(records, statsPricing);
+
+  it("sorts models by total tokens descending", () => {
+    expect(stats.map((s) => s.model)).toEqual([
+      "gpt-5.3-codex",
+      "claude-opus-4-8",
+    ]);
+  });
+
+  it("pins opus aggregates, session count, cache-hit-rate, and per-session averages", () => {
+    const opus = stats.find((s) => s.model === "claude-opus-4-8")!;
+    expect(opus).toMatchObject({
+      tool: "claude",
+      inputTokens: 110,
+      outputTokens: 55,
+      cacheWriteTokens: 200,
+      cacheReadTokens: 300,
+      totalTokens: 665,
+      sessions: 2,
+      unpriced: false,
+    });
+    expect(opus.cost).toBeCloseTo(0.003325, 10); // 3150/1e6 + 175/1e6
+    expect(opus.cacheHitRate).toBeCloseTo(0.7317073170731707, 12); // 300/410
+    expect(opus.avgTokensPerSession).toBe(332.5); // 665 / 2
+    expect(opus.avgCostPerSession).toBeCloseTo(0.0016625, 12);
+  });
+
+  it("pins codex aggregates and single-session averages", () => {
+    const codex = stats.find((s) => s.model === "gpt-5.3-codex")!;
+    expect(codex.totalTokens).toBe(1100); // 200 + 100 + 0 + 800
+    expect(codex.sessions).toBe(1);
+    expect(codex.cacheHitRate).toBe(0.8); // 800 / 1000
+    expect(codex.cost).toBeCloseTo(0.00189, 10); // (200*1.75 + 100*14 + 800*0.175)/1e6
+    expect(codex.avgTokensPerSession).toBe(1100);
+    expect(codex.avgCostPerSession).toBeCloseTo(0.00189, 10);
   });
 });

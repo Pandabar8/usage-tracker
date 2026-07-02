@@ -169,3 +169,101 @@ export function aggregate(
     claudeWindows: windows,
   };
 }
+
+// Share of read-side tokens served from cache: cacheRead / (input + cacheRead).
+// Returns 0 when there were no read-side tokens (avoids divide-by-zero).
+export function cacheHitRate(
+  inputTokens: number,
+  cacheReadTokens: number,
+): number {
+  const denom = inputTokens + cacheReadTokens;
+  return denom > 0 ? cacheReadTokens / denom : 0;
+}
+
+export interface ModelStats {
+  model: string;
+  tool: Tool;
+  inputTokens: number;
+  outputTokens: number;
+  cacheWriteTokens: number;
+  cacheReadTokens: number;
+  totalTokens: number;
+  cost: number; // notional, API-rate
+  unpriced: boolean;
+  sessions: number; // distinct session ids that used this model
+  cacheHitRate: number;
+  avgTokensPerSession: number;
+  avgCostPerSession: number;
+}
+
+// Per-model aggregation for the model-compare surface: token totals, notional
+// cost, distinct-session count, cache-hit-rate, and per-session averages.
+// Keyed by [tool, model] to match aggregate()'s byModel grouping; sorted by
+// total tokens descending.
+export function modelStats(
+  records: UsageRecord[],
+  pricing: PricingTable = defaultPricing,
+): ModelStats[] {
+  interface Acc {
+    model: string;
+    tool: Tool;
+    inputTokens: number;
+    outputTokens: number;
+    cacheWriteTokens: number;
+    cacheReadTokens: number;
+    totalTokens: number;
+    cost: number;
+    unpriced: boolean;
+    sessions: Set<string>;
+  }
+  const map = new Map<string, Acc>();
+
+  for (const r of records) {
+    const key = JSON.stringify([r.tool, r.model]);
+    let a = map.get(key);
+    if (!a) {
+      a = {
+        model: r.model,
+        tool: r.tool,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheWriteTokens: 0,
+        cacheReadTokens: 0,
+        totalTokens: 0,
+        cost: 0,
+        unpriced: !isPriced(r.model, pricing),
+        sessions: new Set(),
+      };
+      map.set(key, a);
+    }
+    a.inputTokens += r.inputTokens;
+    a.outputTokens += r.outputTokens;
+    a.cacheWriteTokens += r.cacheWriteTokens;
+    a.cacheReadTokens += r.cacheReadTokens;
+    a.totalTokens += totalTokens(r);
+    a.cost += cost(r, pricing);
+    if (r.sessionId) a.sessions.add(r.sessionId);
+  }
+
+  const out: ModelStats[] = [];
+  for (const a of map.values()) {
+    const sessions = a.sessions.size;
+    out.push({
+      model: a.model,
+      tool: a.tool,
+      inputTokens: a.inputTokens,
+      outputTokens: a.outputTokens,
+      cacheWriteTokens: a.cacheWriteTokens,
+      cacheReadTokens: a.cacheReadTokens,
+      totalTokens: a.totalTokens,
+      cost: a.cost,
+      unpriced: a.unpriced,
+      sessions,
+      cacheHitRate: cacheHitRate(a.inputTokens, a.cacheReadTokens),
+      avgTokensPerSession: sessions > 0 ? a.totalTokens / sessions : 0,
+      avgCostPerSession: sessions > 0 ? a.cost / sessions : 0,
+    });
+  }
+  out.sort((x, y) => y.totalTokens - x.totalTokens);
+  return out;
+}
