@@ -5,7 +5,11 @@ import { join } from "node:path";
 
 // Single source of truth for the write transform lives in retention.mjs so the
 // raw-`node` fix-retention script and this module share one implementation.
-export { RETENTION_TARGET_DAYS, raiseRetention } from "./retention.mjs";
+export {
+  RETENTION_TARGET_DAYS,
+  raiseRetention,
+  raiseRetentionInFile,
+} from "./retention.mjs";
 
 // Claude Code applies a 30-day default when cleanupPeriodDays is absent.
 export const RETENTION_DEFAULT_DAYS = 30;

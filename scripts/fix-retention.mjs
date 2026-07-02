@@ -3,56 +3,33 @@
 // Safe read-modify-write: preserves every other key, aborts without writing on a
 // parse error, and is safe to run repeatedly. Pass a path as the first argument
 // to target a file other than ~/.claude/settings.json.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
-  raiseRetention,
+  raiseRetentionInFile,
   RETENTION_TARGET_DAYS,
 } from "../src/lib/retention.mjs";
 
 function run(settingsPath) {
-  let obj = {};
-  const existed = existsSync(settingsPath);
-
-  if (existed) {
-    let raw;
-    try {
-      raw = readFileSync(settingsPath, "utf8");
-    } catch (err) {
-      console.error(`Could not read ${settingsPath}: ${err.message}`);
-      process.exit(1);
-    }
-    try {
-      obj = JSON.parse(raw);
-    } catch {
-      console.error(
-        `Refusing to write: ${settingsPath} is not valid JSON. Fix it by hand first.`,
-      );
-      process.exit(1);
-    }
-    if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
-      console.error(`Refusing to write: ${settingsPath} is not a JSON object.`);
-      process.exit(1);
-    }
-  } else {
-    console.log(`No settings file at ${settingsPath}; creating a minimal one.`);
+  let result;
+  try {
+    result = raiseRetentionInFile(settingsPath, RETENTION_TARGET_DAYS);
+  } catch (err) {
+    console.error(`Refusing to write: ${err.message}`);
+    process.exit(1);
   }
 
-  const before =
-    typeof obj.cleanupPeriodDays === "number"
-      ? obj.cleanupPeriodDays
-      : "(unset, defaults to 30)";
-  const { next, changed } = raiseRetention(obj, RETENTION_TARGET_DAYS);
+  const { before, after, changed, existed } = result;
+  const beforeLabel = before === null ? "(unset, defaults to 30)" : before;
 
+  if (!existed) {
+    console.log(`No settings file at ${settingsPath}; created a minimal one.`);
+  }
   if (!changed && existed) {
-    console.log(`cleanupPeriodDays already ${before}; nothing to do.`);
+    console.log(`cleanupPeriodDays already ${beforeLabel}; nothing to do.`);
     return;
   }
-
-  mkdirSync(dirname(settingsPath), { recursive: true });
-  writeFileSync(settingsPath, JSON.stringify(next, null, 2) + "\n");
-  console.log(`cleanupPeriodDays: ${before} -> ${next.cleanupPeriodDays}`);
+  console.log(`cleanupPeriodDays: ${beforeLabel} -> ${after}`);
   console.log(`Wrote ${settingsPath}`);
 }
 

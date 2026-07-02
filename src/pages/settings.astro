@@ -1,18 +1,32 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { getRetention, isRetentionRisky, effectiveRetentionDays } from '../lib/settings';
+import RetentionPanel from '../components/RetentionPanel.tsx';
+import {
+  getRetention,
+  isRetentionRisky,
+  effectiveRetentionDays,
+  RETENTION_TARGET_DAYS,
+} from '../lib/settings';
+import { scan } from '../lib/scan';
+import { earliestClaudeTimestamp } from '../lib/aggregate';
 
 export const prerender = false;
 
 const info = getRetention();
-const days = effectiveRetentionDays(info);
-const risky = isRetentionRisky(info);
+const { records } = scan();
+const retention = {
+  cleanupPeriodDays: info.cleanupPeriodDays,
+  effectiveDays: effectiveRetentionDays(info),
+  protected: !isRetentionRisky(info),
+  claudeStart: earliestClaudeTimestamp(records),
+  targetDays: RETENTION_TARGET_DAYS,
+};
 ---
 <Layout title="Settings">
   <div class="top">
     <div>
       <h1>Settings</h1>
-      <div class="sub">read-only in v1 · controls coming later</div>
+      <div class="sub">local · read-only except the protect action below</div>
     </div>
   </div>
 
@@ -21,17 +35,5 @@ const risky = isRetentionRisky(info);
     <p class="hint">Refined dark. Light theme is out of scope for v1.</p>
   </div>
 
-  <div class="card">
-    <h3>Retention</h3>
-    <p class="hint">Claude usage-history retention window.</p>
-    <div class="qrow">
-      <span class="qlab">Current</span>
-      <span class="qmeta">{days} days{risky ? ' · at risk of data loss' : ' · safe'}</span>
-    </div>
-    {risky && (
-      <p class="note">
-        Run <span class="mono">npm run fix-retention</span> to raise the retention window so past usage is not lost.
-      </p>
-    )}
-  </div>
+  <RetentionPanel client:load initial={retention} />
 </Layout>
