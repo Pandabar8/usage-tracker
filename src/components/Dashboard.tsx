@@ -8,7 +8,7 @@ import RetentionBanner from "./RetentionBanner";
 import UsageTrend from "./UsageTrend";
 import ByModel from "./ByModel";
 import ByProject from "./ByProject";
-import QuotaPanel from "./QuotaPanel";
+import LimitsPanel from "./LimitsPanel";
 
 export default function Dashboard({
   initial,
@@ -68,7 +68,7 @@ export default function Dashboard({
         <ByModel data={data} />
         <ByProject data={data} />
       </div>
-      <QuotaPanel data={data} />
+      <LimitsPanel data={data} />
     </div>
   );
 }
