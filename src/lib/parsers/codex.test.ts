@@ -231,6 +231,16 @@ describe("parseCodexFile across a multi-session rollout", () => {
       reasoningTokens: 0,
     });
   });
+
+  it("exposes each session's max cumulative total for cross-file reconciliation", () => {
+    const { sessionMaxTotals } = parseCodexFile(codexMulti);
+    expect(sessionMaxTotals?.get("019e39b9-0000-7000-a000-0000000000a1")).toBe(
+      1000,
+    );
+    expect(sessionMaxTotals?.get("019e2f27-0000-7000-a000-0000000000b2")).toBe(
+      1600,
+    );
+  });
 });
 
 describe("parseCodexFile tool-call coverage", () => {

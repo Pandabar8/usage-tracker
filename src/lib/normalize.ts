@@ -45,6 +45,10 @@ export interface ParsedFile {
   records: UsageRecord[];
   quota: RateLimitSnapshot | null;
   sessions?: SessionMeta[];
+  // Codex only: highest cumulative total_tokens reached per session id in this
+  // file. scan() uses it to pick the authoritative file when a forked rollout
+  // replays a parent id across files.
+  sessionMaxTotals?: Map<string, number>;
 }
 
 // Claude Code persists no rate-limit data, so its "limits" are shown as the

@@ -81,6 +81,7 @@ export function parseCodexFile(path: string): ParsedFile {
   // the most recent session_meta; every record and every meta count is attributed
   // to it, and one SessionMeta is emitted per distinct id.
   const sessions = new Map<string, SessionAcc>();
+  const sessionMaxTotals = new Map<string, number>();
   let activeId = "";
   function accFor(id: string): SessionAcc {
     let a = sessions.get(id);
@@ -241,6 +242,11 @@ export function parseCodexFile(path: string): ParsedFile {
       const cur = readCumulative(obj.payload.info);
       if (!cur) continue; // info null, or no cumulative usage on this event
 
+      if (activeId) {
+        const seen = sessionMaxTotals.get(activeId) ?? 0;
+        if (cur.total > seen) sessionMaxTotals.set(activeId, cur.total);
+      }
+
       // Total-gated, field-wise high-water-mark delta. GATE: a snapshot contributes
       // new usage ONLY when its cumulative TOTAL exceeds the high-water total; a
       // snapshot with `cur.total <= hwm.total` (a mid-session context TRIM, a replayed
@@ -298,5 +304,5 @@ export function parseCodexFile(path: string): ParsedFile {
     endedAt: a.endedAt,
   }));
 
-  return { records, quota, sessions: sessionsOut };
+  return { records, quota, sessions: sessionsOut, sessionMaxTotals };
 }
