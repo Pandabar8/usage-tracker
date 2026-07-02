@@ -1,0 +1,17 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Compare from '../components/Compare.tsx';
+import { scan } from '../lib/scan';
+import { groupSessions } from '../lib/sessions';
+import { modelStats } from '../lib/aggregate';
+import { defaultPricing } from '../lib/pricing';
+
+export const prerender = false;
+
+const { records, sessionMeta } = scan();
+const sessions = groupSessions(records, sessionMeta, defaultPricing);
+const models = modelStats(records, defaultPricing);
+---
+<Layout title="Compare">
+  <Compare client:load sessions={sessions} models={models} />
+</Layout>
