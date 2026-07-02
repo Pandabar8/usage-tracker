@@ -5,7 +5,7 @@ import FilterBar, { type ToolFilter } from "./FilterBar";
 import Overview from "./Overview";
 import Tips from "./Tips";
 import RetentionBanner from "./RetentionBanner";
-import TrendChart from "./TrendChart";
+import UsageTrend from "./UsageTrend";
 import ByModel from "./ByModel";
 import ByProject from "./ByProject";
 import QuotaPanel from "./QuotaPanel";
@@ -63,7 +63,7 @@ export default function Dashboard({
       />
       <Overview data={data} />
       <Tips tips={data.tips} />
-      <TrendChart data={data} />
+      <UsageTrend data={data} />
       <div className="grid md:grid-cols-2 gap-8">
         <ByModel data={data} />
         <ByProject data={data} />
