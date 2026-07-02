@@ -52,27 +52,33 @@ export default function Compare({
 }) {
   const [tab, setTab] = useState<"sessions" | "models">("sessions");
   return (
-    <div className="space-y-6">
-      <div className="flex gap-2 text-sm">
-        {(["sessions", "models"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-1 rounded ${tab === t ? "bg-blue-500 text-white" : "bg-neutral-800 text-neutral-300"}`}
-          >
-            {t === "sessions" ? "Sessions" : "Models"}
-          </button>
-        ))}
+    <>
+      <div className="top">
+        <div>
+          <h1>Compare</h1>
+          <div className="sub">
+            side-by-side deltas · notional cost at API rates
+          </div>
+        </div>
+        <div className="toggle">
+          {(["sessions", "models"] as const).map((t) => (
+            <button
+              key={t}
+              className={tab === t ? "on" : ""}
+              onClick={() => setTab(t)}
+            >
+              {t === "sessions" ? "Sessions" : "Models"}
+            </button>
+          ))}
+        </div>
       </div>
-      <p className="text-xs text-neutral-500">
-        Costs are notional, computed at public API rates.
-      </p>
+
       {tab === "sessions" ? (
         <SessionCompare sessions={sessions} />
       ) : (
         <ModelCompare models={models} />
       )}
-    </div>
+    </>
   );
 }
 
@@ -86,11 +92,11 @@ function SessionCompare({ sessions }: { sessions: SessionSummary[] }) {
     `${s.project} · ${s.tool} · ${new Date(s.startedAt).toLocaleDateString()}`;
 
   if (sessions.length === 0) {
-    return <p className="text-neutral-400">No sessions to compare.</p>;
+    return <p className="hint">No sessions to compare.</p>;
   }
   return (
-    <div className="space-y-4">
-      <div className="grid md:grid-cols-2 gap-4">
+    <div className="card" style={{ display: "grid", gap: 16 }}>
+      <div className="grid c2" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <Picker
           label="Session A"
           value={aKey}
@@ -125,11 +131,11 @@ function ModelCompare({ models }: { models: ModelStats[] }) {
   const label = (m: ModelStats) => `${m.model} (${m.tool})`;
 
   if (models.length === 0) {
-    return <p className="text-neutral-400">No models to compare.</p>;
+    return <p className="hint">No models to compare.</p>;
   }
   return (
-    <div className="space-y-4">
-      <div className="grid md:grid-cols-2 gap-4">
+    <div className="card" style={{ display: "grid", gap: 16 }}>
+      <div className="grid c2" style={{ gridTemplateColumns: "1fr 1fr" }}>
         <Picker
           label="Model A"
           value={aKey}
@@ -164,12 +170,12 @@ function Picker({
   options: { value: string; label: string }[];
 }) {
   return (
-    <label className="block text-sm">
-      <span className="text-neutral-400">{label}</span>
+    <label style={{ display: "block" }}>
+      <span className="field-lbl">{label}</span>
       <select
+        className="select"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full bg-neutral-800 rounded px-2 py-1 text-neutral-100"
       >
         {options.length === 0 && <option value="">(none)</option>}
         {options.map((o) => (
@@ -192,30 +198,35 @@ function DiffTable({
   bName: string;
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl bg-neutral-900">
-      <table className="w-full text-sm">
-        <thead className="text-neutral-400">
+    <div style={{ overflowX: "auto" }}>
+      <table className="dtable">
+        <thead>
           <tr>
-            <th className="text-left p-3">Metric</th>
-            <th className="text-right p-3">{aName}</th>
-            <th className="text-right p-3">{bName}</th>
-            <th className="text-right p-3">Δ (B − A)</th>
+            <th>Metric</th>
+            <th className="r">{aName}</th>
+            <th className="r">{bName}</th>
+            <th className="r">Δ (B − A)</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.key} className="border-t border-neutral-800">
-              <td className="p-3 text-neutral-300">{r.label}</td>
-              <td className="p-3 text-right text-neutral-200">
+            <tr key={r.key}>
+              <td style={{ color: "var(--muted)" }}>{r.label}</td>
+              <td className="mono r" style={{ color: "var(--ink)" }}>
                 {fmtVal(r.kind, r.a)}
               </td>
-              <td className="p-3 text-right text-neutral-200">
+              <td className="mono r" style={{ color: "var(--ink)" }}>
                 {fmtVal(r.kind, r.b)}
               </td>
-              <td
-                className={`p-3 text-right ${r.delta > 0 ? "text-emerald-400" : r.delta < 0 ? "text-rose-400" : "text-neutral-500"}`}
-              >
-                {fmtDelta(r.kind, r.delta)}
+              <td className="r">
+                <span
+                  className={`delta ${
+                    r.delta > 0 ? "up" : r.delta < 0 ? "down" : ""
+                  }`}
+                  style={r.delta === 0 ? { color: "var(--faint)" } : undefined}
+                >
+                  {fmtDelta(r.kind, r.delta)}
+                </span>
               </td>
             </tr>
           ))}

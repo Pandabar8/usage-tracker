@@ -1,5 +1,6 @@
 // src/components/SessionDetail.tsx
 import { useState } from "react";
+import type { Tool } from "../lib/normalize";
 import {
   truncate,
   type Message,
@@ -16,6 +17,10 @@ function fmtDuration(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+function agentColor(tool: Tool): string {
+  return tool === "claude" ? "var(--claude)" : "var(--codex)";
+}
+
 export default function SessionDetail({
   detail,
 }: {
@@ -23,74 +28,126 @@ export default function SessionDetail({
 }) {
   const { summary, messages } = detail;
   return (
-    <div className="space-y-6">
-      <a href="/sessions" className="text-blue-400 hover:underline text-sm">
+    <>
+      <a href="/sessions" className="back">
         ← Sessions
       </a>
-      <div className="grid md:grid-cols-[1fr_280px] gap-6">
-        <div className="space-y-4">
-          <p className="text-xs text-neutral-500">
-            Costs are notional, computed at public API rates.
-          </p>
+
+      <div className="top" style={{ marginTop: 14 }}>
+        <div>
+          <h1>{summary.project}</h1>
+          <div className="sub">
+            <span
+              className="tag"
+              style={{
+                color: agentColor(summary.tool),
+                background:
+                  summary.tool === "claude" ? "#e88a4e15" : "#a486f715",
+              }}
+            >
+              {summary.tool}
+            </span>{" "}
+            · notional cost at API rates
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 280px",
+          gap: 16,
+          alignItems: "start",
+        }}
+      >
+        <div style={{ display: "grid", gap: 12 }}>
           {messages.map((m) => (
-            <MessageRow key={m.index} m={m} />
+            <MessageRow key={m.index} m={m} tool={summary.tool} />
           ))}
           {messages.length === 0 && (
-            <p className="text-neutral-400">No messages in this session.</p>
+            <p className="hint">No messages in this session.</p>
           )}
         </div>
-        <aside className="space-y-4">
-          <Sidebar summary={summary} />
-        </aside>
+        <Sidebar summary={summary} />
       </div>
-    </div>
+    </>
   );
 }
 
-function MessageRow({ m }: { m: Message }) {
+function MessageRow({ m, tool }: { m: Message; tool: Tool }) {
   const [open, setOpen] = useState(false);
 
   if (m.compaction) {
     return (
-      <div className="rounded border border-amber-500/40 bg-amber-500/10 text-amber-300 px-3 py-2 text-xs">
-        {m.compaction === "full" ? "Full compaction" : "Micro compaction"}
-        {m.text ? ` — ${truncate(m.text, 120)}` : ""}
+      <div className="tip warn">
+        <p className="tt" style={{ color: "var(--warn)" }}>
+          {m.compaction === "full" ? "Full compaction" : "Micro compaction"}
+        </p>
+        {m.text ? <p className="td">{truncate(m.text, 120)}</p> : null}
       </div>
     );
   }
 
+  const accent = m.role === "user" ? "var(--primary)" : agentColor(tool);
   const long = m.text.length > 300;
   const shown = open || !long ? m.text : truncate(m.text, 300);
   return (
-    <div
-      className={`rounded-xl p-3 ${m.role === "user" ? "bg-neutral-800" : "bg-neutral-900"}`}
-    >
-      <div className="flex items-center justify-between text-xs text-neutral-400 mb-1">
-        <span>
+    <div className="card" style={{ borderLeft: `3px solid ${accent}` }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 6,
+        }}
+      >
+        <span
+          className="mono"
+          style={{
+            fontSize: 10,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            color: m.role === "user" ? "var(--primary)" : agentColor(tool),
+          }}
+        >
           {m.role}
-          {m.model ? ` · ${m.model}` : ""}
+          {m.model ? (
+            <span style={{ color: "var(--faint)" }}> · {m.model}</span>
+          ) : (
+            ""
+          )}
         </span>
-        <span>
+        <span className="mono" style={{ fontSize: 11, color: "var(--faint)" }}>
           {typeof m.tokens === "number" ? `${fmtInt(m.tokens)} tok` : ""}
         </span>
       </div>
-      <div className="whitespace-pre-wrap text-sm text-neutral-100">
-        {shown || <span className="text-neutral-500">(no text)</span>}
+      <div
+        style={{
+          whiteSpace: "pre-wrap",
+          fontSize: 13,
+          color: "var(--ink)",
+        }}
+      >
+        {shown || <span style={{ color: "var(--faint)" }}>(no text)</span>}
       </div>
       {long && (
         <button
           onClick={() => setOpen((o) => !o)}
-          className="mt-1 text-xs text-blue-400"
+          className="linkbtn"
+          style={{ marginTop: 6 }}
         >
           {open ? "Show less" : "Show more"}
         </button>
       )}
       {m.toolUses.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
+        <div
+          style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}
+        >
           {m.toolUses.map((t, i) => (
             <span
               key={i}
-              className="rounded bg-neutral-700 text-neutral-200 px-2 py-0.5 text-xs"
+              className="tag"
+              style={{ color: "var(--muted)", background: "var(--panel-3)" }}
             >
               {t}
             </span>
@@ -103,10 +160,11 @@ function MessageRow({ m }: { m: Message }) {
 
 function Sidebar({ summary }: { summary: SessionDetailData["summary"] }) {
   return (
-    <div className="rounded-xl bg-neutral-900 p-4 space-y-3 text-sm">
-      <h2 className="text-base font-medium">
-        {summary.project} · {summary.tool}
-      </h2>
+    <div
+      className="card"
+      style={{ display: "grid", gap: 10, position: "sticky", top: 22 }}
+    >
+      <h3>Session summary</h3>
       <Row label="Turns" value={String(summary.turns)} />
       <Row label="Tool calls" value={String(summary.toolCalls)} />
       <Row label="Duration" value={fmtDuration(summary.durationMs)} />
@@ -119,17 +177,30 @@ function Sidebar({ summary }: { summary: SessionDetailData["summary"] }) {
         label="Cost"
         value={summary.unpriced ? "unpriced" : fmtUsd(summary.cost)}
       />
-      <div>
-        <div className="text-neutral-400">Models</div>
-        <div className="text-neutral-200">
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          paddingTop: 8,
+          borderTop: "1px solid var(--line)",
+        }}
+      >
+        <span style={{ color: "var(--muted)" }}>Models</span>
+        <span
+          className="mono"
+          style={{ color: "var(--ink)", textAlign: "right" }}
+        >
           {summary.models.join(", ") || "-"}
-        </div>
+        </span>
       </div>
       {summary.compaction && (
-        <div className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-300">
-          Compaction: {summary.compaction.full} full ·{" "}
-          {summary.compaction.micro} micro ·{" "}
-          {fmtInt(summary.compaction.tokensSaved)} tokens saved
+        <div className="tip warn" style={{ marginTop: 2 }}>
+          <p className="td" style={{ color: "var(--warn)" }}>
+            Compaction: {summary.compaction.full} full ·{" "}
+            {summary.compaction.micro} micro ·{" "}
+            {fmtInt(summary.compaction.tokensSaved)} tokens saved
+          </p>
         </div>
       )}
     </div>
@@ -138,9 +209,11 @@ function Sidebar({ summary }: { summary: SessionDetailData["summary"] }) {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between">
-      <span className="text-neutral-400">{label}</span>
-      <span className="text-neutral-200">{value}</span>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+      <span style={{ color: "var(--muted)" }}>{label}</span>
+      <span className="mono" style={{ color: "var(--ink)" }}>
+        {value}
+      </span>
     </div>
   );
 }

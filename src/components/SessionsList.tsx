@@ -1,7 +1,12 @@
 // src/components/SessionsList.tsx
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { SessionSummary } from "../lib/normalize";
-import FilterBar, { type ToolFilter } from "./FilterBar";
+import {
+  onFilter,
+  readFilter,
+  toQuery,
+  type FilterState,
+} from "../lib/filter-bus";
 
 const fmtInt = (n: number) => new Intl.NumberFormat("en-US").format(n);
 const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
@@ -27,36 +32,27 @@ export default function SessionsList({
   initial: SessionSummary[];
 }) {
   const [rows, setRows] = useState<SessionSummary[]>(initial);
-  const [tool, setTool] = useState<ToolFilter>("all");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
   const [loading, setLoading] = useState(false);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({
     key: "startedAt",
     dir: -1,
   });
 
-  async function load(
-    next: { tool?: ToolFilter; from?: string; to?: string } = {},
-    refresh = false,
-  ) {
-    const t = next.tool ?? tool;
-    const f = next.from ?? from;
-    const u = next.to ?? to;
+  async function load(f: FilterState, refresh = false) {
     setLoading(true);
     try {
       if (refresh) await fetch("/api/refresh", { method: "POST" });
-      const params = new URLSearchParams();
-      if (t !== "all") params.set("tool", t);
-      if (f) params.set("from", f);
-      if (u) params.set("to", u);
-      const res = await fetch(`/api/sessions?${params.toString()}`);
+      const qs = toQuery(f);
+      const res = await fetch(`/api/sessions${qs ? `?${qs}` : ""}`);
       if (!res.ok) throw new Error(`sessions request failed: ${res.status}`);
       setRows(await res.json());
     } finally {
       setLoading(false);
     }
   }
+
+  // Consume the sidebar's global tool/date filter, matching the boards.
+  useEffect(() => onFilter((f) => load(f)), []);
 
   const sorted = [...rows].sort((a, b) => {
     const k = sort.key;
@@ -74,29 +70,36 @@ export default function SessionsList({
   }
 
   return (
-    <div className="space-y-6">
-      <FilterBar
-        tool={tool}
-        from={from}
-        to={to}
-        loading={loading}
-        onChange={(n) => {
-          if (n.tool !== undefined) setTool(n.tool);
-          if (n.from !== undefined) setFrom(n.from);
-          if (n.to !== undefined) setTo(n.to);
-          load(n);
-        }}
-        onRefresh={() => load({}, true)}
-      />
-      <p className="text-xs text-neutral-500">
-        Costs are notional, computed at public API rates.
-      </p>
-      <div className="overflow-x-auto rounded-xl bg-neutral-900">
-        <table className="w-full text-sm">
-          <thead className="text-neutral-400">
+    <>
+      <div className="top">
+        <div>
+          <h1>Sessions</h1>
+          <div className="sub">
+            {sorted.length} sessions · notional cost at API rates
+          </div>
+        </div>
+        <button className="btn" onClick={() => load(readFilter(), true)}>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15" />
+          </svg>
+          {loading ? "Loading…" : "Refresh"}
+        </button>
+      </div>
+
+      <div className="card" style={{ overflowX: "auto", padding: 0 }}>
+        <table className="dtable">
+          <thead>
             <tr>
-              <th className="text-left p-3">Session</th>
-              <th className="text-left p-3">Models</th>
+              <th>Session</th>
+              <th>Models</th>
               <Th
                 label="Started"
                 k="startedAt"
@@ -108,53 +111,77 @@ export default function SessionsList({
                 k="durationMs"
                 sort={sort}
                 onSort={toggleSort}
+                right
               />
-              <Th label="Turns" k="turns" sort={sort} onSort={toggleSort} />
+              <Th
+                label="Turns"
+                k="turns"
+                sort={sort}
+                onSort={toggleSort}
+                right
+              />
               <Th
                 label="Tokens"
                 k="totalTokens"
                 sort={sort}
                 onSort={toggleSort}
+                right
               />
-              <Th label="Cost" k="cost" sort={sort} onSort={toggleSort} />
-              <th className="text-left p-3">Compaction</th>
+              <Th label="Cost" k="cost" sort={sort} onSort={toggleSort} right />
+              <th className="r">Compaction</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map((s) => (
-              <tr
-                key={s.key}
-                className="border-t border-neutral-800 hover:bg-neutral-800/50"
-              >
-                <td className="p-3">
+              <tr key={s.key}>
+                <td>
                   <a
-                    className="text-blue-400 hover:underline"
                     href={`/sessions/${encodeURIComponent(s.key)}`}
+                    style={{ color: "var(--primary)", textDecoration: "none" }}
                   >
-                    {s.project} · {s.tool}
-                  </a>
+                    {s.project}
+                  </a>{" "}
+                  <span
+                    className="tag"
+                    style={{
+                      color:
+                        s.tool === "claude" ? "var(--claude)" : "var(--codex)",
+                      background:
+                        s.tool === "claude" ? "#e88a4e15" : "#a486f715",
+                    }}
+                  >
+                    {s.tool}
+                  </span>
                 </td>
-                <td className="p-3 text-neutral-300">
+                <td style={{ color: "var(--muted)" }}>
                   {s.models.join(", ") || "-"}
                 </td>
-                <td className="p-3 text-neutral-300">{fmtWhen(s.startedAt)}</td>
-                <td className="p-3 text-neutral-300">
+                <td className="mono">{fmtWhen(s.startedAt)}</td>
+                <td className="mono r" style={{ color: "var(--ink)" }}>
                   {fmtDuration(s.durationMs)}
                 </td>
-                <td className="p-3 text-neutral-300">{s.turns}</td>
-                <td className="p-3 text-neutral-300">
+                <td className="mono r" style={{ color: "var(--ink)" }}>
+                  {s.turns}
+                </td>
+                <td className="mono r" style={{ color: "var(--ink)" }}>
                   {fmtInt(s.totalTokens)}
                 </td>
-                <td className="p-3 text-neutral-300">
+                <td className="mono r" style={{ color: "var(--ink)" }}>
                   {s.unpriced ? "unpriced" : fmtUsd(s.cost)}
                 </td>
-                <td className="p-3">
+                <td className="r">
                   {s.compaction ? (
-                    <span className="rounded bg-amber-500/20 text-amber-400 px-2 py-0.5 text-xs">
+                    <span
+                      className="tag"
+                      style={{
+                        color: "var(--warn)",
+                        background: "#f5a52418",
+                      }}
+                    >
                       {s.compaction.full + s.compaction.micro}×
                     </span>
                   ) : (
-                    <span className="text-neutral-600">-</span>
+                    <span style={{ color: "var(--faint)" }}>-</span>
                   )}
                 </td>
               </tr>
@@ -163,9 +190,11 @@ export default function SessionsList({
         </table>
       </div>
       {sorted.length === 0 && (
-        <p className="text-neutral-400">No sessions found.</p>
+        <p className="hint" style={{ marginTop: 14 }}>
+          No sessions found.
+        </p>
       )}
-    </div>
+    </>
   );
 }
 
@@ -174,18 +203,17 @@ function Th({
   k,
   sort,
   onSort,
+  right = false,
 }: {
   label: string;
   k: SortKey;
   sort: { key: SortKey; dir: 1 | -1 };
   onSort: (k: SortKey) => void;
+  right?: boolean;
 }) {
   const active = sort.key === k;
   return (
-    <th
-      className="text-left p-3 cursor-pointer select-none"
-      onClick={() => onSort(k)}
-    >
+    <th className={`sortable${right ? " r" : ""}`} onClick={() => onSort(k)}>
       {label}
       {active ? (sort.dir === 1 ? " ↑" : " ↓") : ""}
     </th>

@@ -43,25 +43,23 @@ export default function SessionSearch({
   }, []);
 
   return (
-    <div className="space-y-4">
+    <div style={{ marginBottom: 16 }}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           run(q);
         }}
-        className="flex items-center gap-2 text-sm"
+        style={{ display: "flex", alignItems: "center", gap: 8 }}
       >
         <input
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search message text across sessions…"
-          className="flex-1 bg-neutral-800 rounded px-3 py-1.5 text-neutral-100 placeholder:text-neutral-500"
+          className="input"
+          style={{ flex: 1 }}
         />
-        <button
-          type="submit"
-          className="px-3 py-1.5 rounded bg-blue-500 text-white"
-        >
+        <button type="submit" className="btn">
           {loading ? "Searching…" : "Search"}
         </button>
         {searched && (
@@ -71,7 +69,7 @@ export default function SessionSearch({
               setQ("");
               run("");
             }}
-            className="px-3 py-1.5 rounded bg-neutral-800 text-neutral-300"
+            className="btn"
           >
             Clear
           </button>
@@ -79,25 +77,55 @@ export default function SessionSearch({
       </form>
 
       {searched && (
-        <div className="space-y-2">
+        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
           {results.length === 0 ? (
-            <p className="text-neutral-400 text-sm">No matches.</p>
+            <p className="hint" style={{ margin: 0 }}>
+              No matches.
+            </p>
           ) : (
             results.map((r) => (
               <a
                 key={r.key}
                 href={`/sessions/${encodeURIComponent(r.key)}`}
-                className="block rounded-xl bg-neutral-900 p-3 hover:bg-neutral-800/60"
+                className="card link"
+                style={{ padding: "12px 14px" }}
               >
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-blue-400">
-                    {r.project} · {r.tool}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span>
+                    <span style={{ color: "var(--primary)" }}>{r.project}</span>{" "}
+                    <span
+                      className="tag"
+                      style={{
+                        color:
+                          r.tool === "claude"
+                            ? "var(--claude)"
+                            : "var(--codex)",
+                        background:
+                          r.tool === "claude" ? "#e88a4e15" : "#a486f715",
+                      }}
+                    >
+                      {r.tool}
+                    </span>
                   </span>
-                  <span className="text-xs text-neutral-500">
+                  <span className="mono" style={{ color: "var(--faint)" }}>
                     {r.matchCount} match{r.matchCount === 1 ? "" : "es"}
                   </span>
                 </div>
-                <p className="mt-1 text-sm text-neutral-300">{r.snippet}</p>
+                <p
+                  style={{
+                    margin: "8px 0 0",
+                    color: "var(--muted)",
+                    fontSize: 12.5,
+                  }}
+                >
+                  {r.snippet}
+                </p>
               </a>
             ))
           )}
