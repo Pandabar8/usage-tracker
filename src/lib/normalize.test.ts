@@ -1,6 +1,11 @@
 // src/lib/normalize.test.ts
 import { describe, it, expect } from "vitest";
-import { projectFromCwd, totalTokens, type UsageRecord } from "./normalize";
+import {
+  projectFromCwd,
+  totalTokens,
+  truncate,
+  type UsageRecord,
+} from "./normalize";
 
 describe("projectFromCwd", () => {
   it("returns the basename of a path", () => {
@@ -31,5 +36,19 @@ describe("totalTokens", () => {
       reasoningTokens: 40,
     };
     expect(totalTokens(r)).toBe(1100);
+  });
+});
+
+describe("truncate", () => {
+  it("returns the text unchanged when within the limit", () => {
+    expect(truncate("hello", 10)).toBe("hello");
+    expect(truncate("hello", 5)).toBe("hello");
+  });
+  it("cuts to max and appends an ellipsis when over the limit", () => {
+    expect(truncate("hello world", 5)).toBe("hello…");
+  });
+  it("handles empty text and a non-positive limit", () => {
+    expect(truncate("", 5)).toBe("");
+    expect(truncate("abc", 0)).toBe("");
   });
 });

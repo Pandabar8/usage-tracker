@@ -26,9 +26,25 @@ export interface RateLimitSnapshot {
   secondary: RateLimitWindow | null;
 }
 
+// Per-session structural meta computed during the cached scan parse (no extra
+// file reads). Token totals live in UsageRecord; this carries counts that
+// records do not: assistant turns, tool calls, models, span, and (Claude only)
+// compaction counts.
+export interface SessionMeta {
+  sessionId: string;
+  tool: Tool;
+  turns: number;
+  toolCalls: number;
+  models: string[];
+  startedAt: string;
+  endedAt: string;
+  compaction?: { full: number; micro: number; tokensSaved: number };
+}
+
 export interface ParsedFile {
   records: UsageRecord[];
   quota: RateLimitSnapshot | null;
+  sessions?: SessionMeta[];
 }
 
 // Claude Code persists no rate-limit data, so its "limits" are shown as the
@@ -37,6 +53,45 @@ export interface ClaudeWindows {
   fiveHourTokens: number;
   sevenDayTokens: number;
   asOf: string; // ISO timestamp of the `now` the windows were computed against; "" when unknown
+}
+
+export interface SessionSummary {
+  key: string; // stable composite route key `${tool}:${sessionId}`, unique across tools
+  id: string; // raw session id, kept for display and raw-id lookups
+  tool: Tool;
+  project: string;
+  models: string[];
+  startedAt: string;
+  endedAt: string;
+  durationMs: number;
+  turns: number;
+  toolCalls: number;
+  tokens: {
+    input: number;
+    output: number;
+    cacheWrite: number;
+    cacheRead: number;
+  };
+  totalTokens: number;
+  cost: number; // notional, API-rate
+  unpriced: boolean;
+  compaction?: { full: number; micro: number; tokensSaved: number }; // Claude only
+}
+
+export interface Message {
+  index: number;
+  role: "user" | "assistant";
+  text: string; // full text in the payload; the UI truncates for display
+  toolUses: string[]; // tool names
+  model?: string;
+  tokens?: number;
+  timestamp: string;
+  compaction?: "full" | "micro"; // Claude only
+}
+
+export interface SessionDetail {
+  summary: SessionSummary;
+  messages: Message[];
 }
 
 export function projectFromCwd(cwd?: string | null): string {
@@ -51,6 +106,17 @@ export function totalTokens(r: UsageRecord): number {
   );
 }
 
+// Shortens text for display, appending an ellipsis when cut. Callers keep the
+// full text in the API payload; only the UI shortens.
+export function truncate(text: string, max: number): string {
+  if (max <= 0) return "";
+  if (text.length <= max) return text;
+  return text.slice(0, max) + "…";
+}
+
+// --- Phase 1 types (forecast + tips) — preserved through this full-file
+// replace so Phase 1's forecast.ts/tips.ts/aggregate.ts/QuotaPanel/Tips keep
+// compiling. Do not drop. ---
 export interface WindowForecast {
   willExhaust: boolean;
   projectedPercentAtReset: number | null;
