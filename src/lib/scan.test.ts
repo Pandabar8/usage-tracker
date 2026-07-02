@@ -1,5 +1,5 @@
 // src/lib/scan.test.ts
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   mkdtempSync,
   writeFileSync,
@@ -13,6 +13,7 @@ import { scan } from "./scan";
 import { parseClaudeFile } from "./parsers/claude";
 import { parseFileCached, clearCache } from "./cache";
 import type { UsageRecord } from "./normalize";
+import { totalTokens } from "./normalize";
 
 let claudeDir: string;
 let codexDir: string;
@@ -294,5 +295,196 @@ describe("scan session meta and index", () => {
     // reset), so its input is 200, not the full cumulative 300.
     const rb = records.find((r) => r.sessionId === idB)!;
     expect(rb.inputTokens).toBe(200);
+  });
+
+  it("reconciles a forked rollout across files: the session total equals its max cumulative, not the replay-inflated sum", () => {
+    // Stands in for real id 019e2f27 spanning 3 files. A fork REPLAYS the parent's
+    // session_meta + cumulative token history under the SAME id in a new file, so
+    // summing every file double-counts the replay. Correct total = the max
+    // cumulative (10000 here; 199,637,209 in real data), NOT 20200.
+    const P = "019e2f27-0000-7000-a000-00000000cafe";
+    const F1 = "019e39b8-0000-7000-a000-00000000f001";
+    const F2 = "019e39b9-0000-7000-a000-00000000f002";
+    const meta = (ts: string, id: string, forked?: string) =>
+      JSON.stringify({
+        timestamp: ts,
+        type: "session_meta",
+        payload: forked
+          ? { id, forked_from_id: forked, cwd: "/Users/me/FinApp" }
+          : { id, cwd: "/Users/me/FinApp" },
+      });
+    const turn = (ts: string) =>
+      JSON.stringify({
+        timestamp: ts,
+        type: "turn_context",
+        payload: { model: "gpt-5.5", cwd: "/Users/me/FinApp" },
+      });
+    const tc = (
+      ts: string,
+      input: number,
+      cached: number,
+      output: number,
+      total: number,
+    ) =>
+      JSON.stringify({
+        timestamp: ts,
+        type: "event_msg",
+        payload: {
+          type: "token_count",
+          info: {
+            total_token_usage: {
+              input_tokens: input,
+              cached_input_tokens: cached,
+              output_tokens: output,
+              reasoning_output_tokens: 0,
+              total_tokens: total,
+            },
+          },
+        },
+      });
+
+    const parent = [
+      meta("2026-05-16T00:00:00.000Z", P),
+      turn("2026-05-16T00:00:30.000Z"),
+      tc("2026-05-16T00:01:00.000Z", 900, 100, 100, 1000),
+      tc("2026-05-16T00:02:00.000Z", 4500, 500, 500, 5000),
+      tc("2026-05-16T00:03:00.000Z", 9000, 1000, 1000, 10000),
+    ].join("\n");
+    // fork1: own id F1, then REPLAYS parent meta P + parent snapshots verbatim, zero new
+    const fork1 = [
+      meta("2026-05-18T00:00:00.000Z", F1, P),
+      turn("2026-05-18T00:00:00.050Z"),
+      meta("2026-05-18T00:00:00.100Z", P),
+      tc("2026-05-18T00:00:00.200Z", 900, 100, 100, 1000),
+      tc("2026-05-18T00:00:00.300Z", 4500, 500, 500, 5000),
+    ].join("\n");
+    // fork2: replays P to the fork point then adds 200 genuinely-new (attributed to P)
+    const fork2 = [
+      meta("2026-05-18T01:00:00.000Z", F2, P),
+      turn("2026-05-18T01:00:00.050Z"),
+      meta("2026-05-18T01:00:00.100Z", P),
+      tc("2026-05-18T01:00:00.200Z", 900, 100, 100, 1000),
+      tc("2026-05-18T01:00:00.300Z", 4500, 500, 500, 5000),
+      tc("2026-05-18T01:00:00.400Z", 4600, 500, 600, 5200),
+    ].join("\n");
+
+    mkdirSync(join(codexDir, "2026", "05", "16"), { recursive: true });
+    mkdirSync(join(codexDir, "2026", "05", "18"), { recursive: true });
+    writeFileSync(
+      join(codexDir, "2026", "05", "16", "rollout-parent.jsonl"),
+      parent,
+    );
+    writeFileSync(
+      join(codexDir, "2026", "05", "18", "rollout-fork1.jsonl"),
+      fork1,
+    );
+    writeFileSync(
+      join(codexDir, "2026", "05", "18", "rollout-fork2.jsonl"),
+      fork2,
+    );
+
+    const { records } = scan({ claudeDir, codexDir });
+    const codex = records.filter((r) => r.tool === "codex");
+    const summed = codex.reduce((acc, r) => acc + totalTokens(r), 0);
+    // Parent (max 10000) is authoritative; both replay files' P records dropped,
+    // including fork2's 200 genuinely-new (absorbed below the parent high-water
+    // mark, matching the oracle max-cumulative ground truth). NOT 10000+5000+5200.
+    expect(summed).toBe(10000);
+    expect(codex).toHaveLength(3); // only the parent file's three P records survive
+    expect(codex.every((r) => r.sessionId === P)).toBe(true);
+  });
+
+  it("breaks an authoritative-file tie toward the earliest (parent) file and warns", () => {
+    // Two files carry the SAME id reaching the SAME max cumulative total (5000).
+    // Selection must be deterministic regardless of scan order: the earliest-
+    // timestamped file (the original rollout; a replay is always written later)
+    // wins, so the parent's day/project attribution is kept, not the replay's.
+    // Equal maxima across files is exactly the "comparable maxima" ambiguity the
+    // reconciler logs (not silently drops).
+    const P = "019e2f27-0000-7000-a000-00000000d1e1";
+    const tc = (
+      ts: string,
+      input: number,
+      cached: number,
+      output: number,
+      total: number,
+      id: string,
+      cwd: string,
+    ) =>
+      [
+        JSON.stringify({
+          timestamp: ts,
+          type: "session_meta",
+          payload: { id, cwd },
+        }),
+        JSON.stringify({
+          timestamp: ts,
+          type: "turn_context",
+          payload: { model: "gpt-5.5", cwd },
+        }),
+        JSON.stringify({
+          timestamp: ts,
+          type: "event_msg",
+          payload: {
+            type: "token_count",
+            info: {
+              total_token_usage: {
+                input_tokens: input,
+                cached_input_tokens: cached,
+                output_tokens: output,
+                reasoning_output_tokens: 0,
+                total_tokens: total,
+              },
+            },
+          },
+        }),
+      ].join("\n");
+
+    // Both reach total 5000; earlier file is dated 05-16 with project ProjEarly,
+    // later replay is dated 05-18 with project ProjLate.
+    const early = tc(
+      "2026-05-16T00:01:00.000Z",
+      4500,
+      500,
+      500,
+      5000,
+      P,
+      "/Users/me/ProjEarly",
+    );
+    const late = tc(
+      "2026-05-18T00:01:00.000Z",
+      4500,
+      500,
+      500,
+      5000,
+      P,
+      "/Users/me/ProjLate",
+    );
+    mkdirSync(join(codexDir, "2026", "05", "16"), { recursive: true });
+    mkdirSync(join(codexDir, "2026", "05", "18"), { recursive: true });
+    writeFileSync(
+      join(codexDir, "2026", "05", "16", "rollout-tie-early.jsonl"),
+      early,
+    );
+    writeFileSync(
+      join(codexDir, "2026", "05", "18", "rollout-tie-late.jsonl"),
+      late,
+    );
+
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { records } = scan({ claudeDir, codexDir });
+    // Capture the spy's call state BEFORE restoring: mockRestore() also resets
+    // call history, so asserting on `warn` after restore is unreliable.
+    const warnCalled = warn.mock.calls.length > 0;
+    warn.mockRestore();
+
+    const codex = records.filter(
+      (r) => r.tool === "codex" && r.sessionId === P,
+    );
+    const summed = codex.reduce((acc, r) => acc + totalTokens(r), 0);
+    expect(summed).toBe(5000); // one file wins the tie; NOT 10000
+    expect(codex).toHaveLength(1); // only the winning file's single record survives
+    expect(codex.every((r) => r.project === "ProjEarly")).toBe(true); // parent attribution kept
+    expect(warnCalled).toBe(true); // comparable-maxima ambiguity is logged, not silent
   });
 });
