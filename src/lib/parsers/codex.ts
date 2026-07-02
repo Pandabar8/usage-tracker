@@ -96,6 +96,10 @@ export function parseCodexFile(path: string): ParsedFile {
   // an `event_msg.agent_message` is counted only when its turn produced no assistant
   // response_item (flushed at the next user turn, at a session switch, or at EOF).
   let lastUserText = "";
+  // The response_item user copy mirrors an event_msg user_message ONLY within the
+  // open turn (see parseCodexMessages); scope the dedup to the turn so a repeated
+  // identical prompt in a LATER turn is still counted as a new turn.
+  let hasUserInTurn = false;
   let sawAssistant = false;
   let pendingAgent = false;
   const flushTurn = () => {
@@ -104,12 +108,14 @@ export function parseCodexFile(path: string): ParsedFile {
   };
   const resetTurnState = () => {
     lastUserText = "";
+    hasUserInTurn = false;
     sawAssistant = false;
     pendingAgent = false;
   };
   const openUserTurn = (text: string) => {
     flushTurn();
     lastUserText = text;
+    hasUserInTurn = true;
     sawAssistant = false;
   };
 
@@ -164,11 +170,17 @@ export function parseCodexFile(path: string): ParsedFile {
       } else if (pt === "message" && obj.payload?.role === "assistant") {
         if (activeId) accFor(activeId).turns += 1;
         sawAssistant = true;
+        hasUserInTurn = false; // the model responded; the turn's user echo window closed
         pendingAgent = false;
       } else if (pt === "message" && obj.payload?.role === "user") {
         const text = extractCodexText(obj.payload.content);
-        // Skip synthetic context injection so turn boundaries match the detail.
-        if (text && !isSyntheticCodexContext(text) && text !== lastUserText) {
+        // Skip synthetic context injection so turn boundaries match the detail,
+        // and dedup the response_item user mirror ONLY within the open turn.
+        if (
+          text &&
+          !isSyntheticCodexContext(text) &&
+          !(hasUserInTurn && text === lastUserText)
+        ) {
           openUserTurn(text);
         }
       }
@@ -184,6 +196,7 @@ export function parseCodexFile(path: string): ParsedFile {
 
     if (obj.type === "event_msg" && obj.payload?.type === "agent_message") {
       pendingAgent = true;
+      hasUserInTurn = false; // the model responded; the turn's user echo window closed
       continue;
     }
 

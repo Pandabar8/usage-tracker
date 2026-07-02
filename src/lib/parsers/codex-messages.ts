@@ -81,6 +81,11 @@ export function parseCodexMessages(path: string, sessionId: string): Message[] {
   let pendingTools: string[] = [];
   let turnTokens: number | undefined;
   let lastUserText = "";
+  // The response_item user copy mirrors an event_msg user_message ONLY within the
+  // open turn, so the dedup is scoped to the turn: `hasUserInTurn` is set when a
+  // user opens the turn and cleared the moment the model responds. A genuinely
+  // repeated identical prompt in a LATER turn is therefore NOT dropped.
+  let hasUserInTurn = false;
   let sawAssistant = false;
   let pendingAgent: { text: string; timestamp: string } | null = null;
 
@@ -111,6 +116,7 @@ export function parseCodexMessages(path: string, sessionId: string): Message[] {
     pendingTools = [];
     turnTokens = undefined;
     lastUserText = "";
+    hasUserInTurn = false;
     sawAssistant = false;
     pendingAgent = null;
   };
@@ -119,6 +125,7 @@ export function parseCodexMessages(path: string, sessionId: string): Message[] {
     flushAgent();
     emit({ role: "user", text, toolUses: [], timestamp });
     lastUserText = text;
+    hasUserInTurn = true;
     sawAssistant = false;
     pendingTools = [];
     turnTokens = undefined;
@@ -180,6 +187,7 @@ export function parseCodexMessages(path: string, sessionId: string): Message[] {
         text: typeof p.message === "string" ? p.message : "",
         timestamp: String(obj.timestamp ?? ""),
       };
+      hasUserInTurn = false; // the model responded; the turn's user echo window closed
       continue;
     }
 
@@ -193,8 +201,13 @@ export function parseCodexMessages(path: string, sessionId: string): Message[] {
         const text = extractCodexText(p.content);
         // Skip synthetic context injection (AGENTS.md / environment_context /
         // user_instructions / permissions), and dedup the response_item copy of
-        // the current turn's user text.
-        if (text && !isSyntheticCodexContext(text) && text !== lastUserText) {
+        // the current turn's user text — ONLY within the open turn, so a repeated
+        // identical prompt in a later turn still surfaces.
+        if (
+          text &&
+          !isSyntheticCodexContext(text) &&
+          !(hasUserInTurn && text === lastUserText)
+        ) {
           openUserTurn(text, String(obj.timestamp ?? ""));
         }
         continue;
@@ -209,6 +222,7 @@ export function parseCodexMessages(path: string, sessionId: string): Message[] {
           timestamp: String(obj.timestamp ?? ""),
         });
         sawAssistant = true;
+        hasUserInTurn = false; // the model responded; the turn's user echo window closed
         pendingAgent = null; // an assistant response_item supersedes any agent_message
         pendingTools = [];
         turnTokens = undefined;

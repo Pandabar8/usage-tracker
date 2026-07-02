@@ -12,6 +12,9 @@ const multiFixture = fileURLToPath(
 const compactionFixture = fileURLToPath(
   new URL("./__fixtures__/codex-compaction.jsonl", import.meta.url),
 );
+const repeatPromptFixture = fileURLToPath(
+  new URL("./__fixtures__/codex-repeat-prompt.jsonl", import.meta.url),
+);
 const ID_A = "019e39b9-0000-7000-a000-0000000000a1";
 const ID_B = "019e2f27-0000-7000-a000-0000000000b2";
 
@@ -98,6 +101,26 @@ describe("parseCodexMessages", () => {
     );
     expect(isSyntheticCodexContext("Add a test for the parser.")).toBe(false);
     expect(isSyntheticCodexContext("Now run it.")).toBe(false);
+  });
+});
+
+describe("parseCodexMessages user-dedup scope", () => {
+  it("keeps a genuinely repeated identical prompt in a LATER turn (dedup is intra-turn only)", () => {
+    const messages = parseCodexMessages(repeatPromptFixture, "cr");
+    // Two turns, each opening with the SAME prompt text. Both user prompts must
+    // survive; only an intra-turn mirror would be deduped.
+    expect(messages).toHaveLength(4);
+    expect(messages.map((m) => m.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
+    expect(messages.filter((m) => m.role === "user")).toHaveLength(2);
+    expect(
+      messages.filter((m) => m.role === "user" && m.text === "Run the build."),
+    ).toHaveLength(2);
+    expect(messages[3].text).toBe("Build passed again.");
   });
 });
 
