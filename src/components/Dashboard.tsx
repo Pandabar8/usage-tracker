@@ -1,7 +1,7 @@
 // src/components/Dashboard.tsx
 import { useState } from "react";
 import type { DashboardData } from "../lib/aggregate";
-import type { Tool } from "../lib/normalize";
+import FilterBar, { type ToolFilter } from "./FilterBar";
 import Overview from "./Overview";
 import Tips from "./Tips";
 import RetentionBanner from "./RetentionBanner";
@@ -9,8 +9,6 @@ import TrendChart from "./TrendChart";
 import ByModel from "./ByModel";
 import ByProject from "./ByProject";
 import QuotaPanel from "./QuotaPanel";
-
-type ToolFilter = Tool | "all";
 
 export default function Dashboard({
   initial,
@@ -50,52 +48,19 @@ export default function Dashboard({
   return (
     <div className="space-y-8">
       <RetentionBanner risky={retention.risky} days={retention.days} />
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <div className="flex gap-2">
-          {(["all", "claude", "codex"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => {
-                setTool(t);
-                load({ tool: t });
-              }}
-              className={`px-3 py-1 rounded ${tool === t ? "bg-blue-500 text-white" : "bg-neutral-800 text-neutral-300"}`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-        <label className="flex items-center gap-1 text-neutral-400">
-          From
-          <input
-            type="date"
-            value={from}
-            onChange={(e) => {
-              setFrom(e.target.value);
-              load({ from: e.target.value });
-            }}
-            className="bg-neutral-800 rounded px-2 py-1 text-neutral-100"
-          />
-        </label>
-        <label className="flex items-center gap-1 text-neutral-400">
-          To
-          <input
-            type="date"
-            value={to}
-            onChange={(e) => {
-              setTo(e.target.value);
-              load({ to: e.target.value });
-            }}
-            className="bg-neutral-800 rounded px-2 py-1 text-neutral-100"
-          />
-        </label>
-        <button
-          onClick={() => load({}, true)}
-          className="ml-auto px-3 py-1 rounded bg-neutral-800 text-neutral-300"
-        >
-          {loading ? "Loading…" : "Refresh"}
-        </button>
-      </div>
+      <FilterBar
+        tool={tool}
+        from={from}
+        to={to}
+        loading={loading}
+        onChange={(n) => {
+          if (n.tool !== undefined) setTool(n.tool);
+          if (n.from !== undefined) setFrom(n.from);
+          if (n.to !== undefined) setTo(n.to);
+          load(n);
+        }}
+        onRefresh={() => load({}, true)}
+      />
       <Overview data={data} />
       <Tips tips={data.tips} />
       <TrendChart data={data} />
