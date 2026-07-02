@@ -16,6 +16,12 @@ const reset = fileURLToPath(
 const multimeta = fileURLToPath(
   new URL("./__fixtures__/codex-multimeta.jsonl", import.meta.url),
 );
+const trim = fileURLToPath(
+  new URL("./__fixtures__/codex-trim.jsonl", import.meta.url),
+);
+const hwmRecover = fileURLToPath(
+  new URL("./__fixtures__/codex-hwm-recover.jsonl", import.meta.url),
+);
 
 describe("parseCodexFile", () => {
   it("does not over-count when one file has many session_meta lines sharing a single monotonic counter", () => {
@@ -105,6 +111,33 @@ describe("parseCodexFile", () => {
       windowMinutes: 10080,
       resetsAt: 2000,
     });
+  });
+
+  it("neutralizes a mid-session context trim with a high-water-mark delta", () => {
+    // Real anchor 019e93ca: total drops 10,281,101 -> 4,710,806 mid-stream;
+    // correct total is the max cumulative 41,502,331, NOT the 51,783,432 the old
+    // "backwards move => re-add the whole snapshot" rule produced.
+    const { records } = parseCodexFile(trim);
+    expect(records).toHaveLength(3); // the 2000 trim snapshot yields NO record
+    expect(records.map((r) => r.inputTokens)).toEqual([1000, 4000, 3000]);
+    const summed = records.reduce((acc, r) => acc + totalTokens(r), 0);
+    expect(summed).toBe(8000); // == max cumulative; the old rule summed 13000
+  });
+
+  it("tracks the high-water mark PER FIELD so a regressed-then-recovered component is not re-added", () => {
+    // output regresses (1000 -> 200) while the cumulative total advances
+    // (2000 -> 5200), then recovers to 1200. Measuring output's recovery from its
+    // own high-water value (1000) counts only the genuinely-new 200; measuring it
+    // from the regressed low (200) would re-add 800 and over-count.
+    // Correct summed total = max cumulative total_tokens = 7200 (input peaks at
+    // 6000, output at 1200; 6000 + 1200 = 7200). Both the OLD prev-based rule and
+    // a whole-snapshot HWM replacement would report 8000 (the extra 800).
+    const { records } = parseCodexFile(hwmRecover);
+    expect(records).toHaveLength(3);
+    expect(records.map((r) => r.inputTokens)).toEqual([1000, 4000, 1000]);
+    expect(records.map((r) => r.outputTokens)).toEqual([1000, 0, 200]);
+    const summed = records.reduce((acc, r) => acc + totalTokens(r), 0);
+    expect(summed).toBe(7200); // == max cumulative; the un-fielded rule summed 8000
   });
 });
 

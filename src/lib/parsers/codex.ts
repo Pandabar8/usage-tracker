@@ -59,14 +59,17 @@ export function parseCodexFile(path: string): ParsedFile {
   let model = "unknown";
   let cwd: string | null = null;
 
-  // ONE continuous cumulative baseline for the WHOLE file. A single rollout can
-  // contain several session_meta ids (e.g. a fork that replays a parent session),
-  // but they all share ONE monotonic `total_token_usage` counter; resetting `prev`
-  // to zero on a session switch would turn every subsequent event's delta into the
-  // full running cumulative and massively over-count. Only session ATTRIBUTION
-  // switches on session_meta; a genuine counter restart is still handled solely by
-  // the `cur.total < prev.total` reset branch below.
-  let prev: Cumulative = {
+  // ONE continuous high-water-mark for the WHOLE file. A single rollout can
+  // contain several session_meta ids sharing ONE monotonic `total_token_usage`
+  // counter, so the baseline is NOT reset on a session switch. `hwm` holds the
+  // running MAX reached in each field (advanced field-wise, below), and the max
+  // cumulative total seen so far. Deltas are measured against it, so a snapshot
+  // that does not advance the total (a mid-session context TRIM, a replayed
+  // prefix, or a duplicate) contributes zero, and a component that regressed
+  // while the total advanced is measured from its own peak — never re-added — when
+  // it later recovers. A true counter restart lands under a NEW session_meta id
+  // and is reconciled across files in scan(), never here.
+  let hwm: Cumulative = {
     input: 0,
     cached: 0,
     output: 0,
@@ -159,7 +162,7 @@ export function parseCodexFile(path: string): ParsedFile {
         resetTurnState(); // the new session starts a fresh turn stream
       }
       cwd = obj.payload?.cwd ?? cwd;
-      // NB: `prev` is deliberately NOT reset here (continuous counter).
+      // NB: `hwm` is deliberately NOT reset here (continuous counter).
     }
 
     // Attribute every line's timestamp to the active session's span (covers
@@ -238,27 +241,35 @@ export function parseCodexFile(path: string): ParsedFile {
       const cur = readCumulative(obj.payload.info);
       if (!cur) continue; // info null, or no cumulative usage on this event
 
-      // Delta from the previous cumulative snapshot.
-      // - True reset (the cumulative TOTAL went backwards → counter/session
-      //   restarted): take the current snapshot as the delta.
-      // - Otherwise difference per field, clamping each to >= 0 so a single
-      //   component regressing while the total still advances cannot produce a
-      //   negative delta. (Clamping a component here — rather than treating any
-      //   field decrease as a full reset — keeps the per-record totals summing to
-      //   the final cumulative total, which is exactly the accounting guard.)
-      const d =
-        cur.total < prev.total
-          ? cur
-          : {
-              input: Math.max(0, cur.input - prev.input),
-              cached: Math.max(0, cur.cached - prev.cached),
-              output: Math.max(0, cur.output - prev.output),
-              reasoning: Math.max(0, cur.reasoning - prev.reasoning),
-              total: cur.total - prev.total,
-            };
-      prev = cur;
-
-      if (d.total <= 0) continue; // duplicate snapshot / no forward progress
+      // Total-gated, field-wise high-water-mark delta. GATE: a snapshot contributes
+      // new usage ONLY when its cumulative TOTAL exceeds the high-water total; a
+      // snapshot with `cur.total <= hwm.total` (a mid-session context TRIM, a replayed
+      // prefix, or a duplicate) contributes zero. When it does contribute, each
+      // field's delta is measured from that field's own high-water value, clamped to
+      // >= 0 so a component that regressed while the total advanced cannot go
+      // negative. The high-water snapshot is then advanced PER FIELD (running max per
+      // field; total set to the new higher cur.total), so when a regressed component
+      // later recovers it is measured from its true peak and only genuinely-new
+      // tokens above that peak are counted. The cumulative-TOTAL deltas telescope to
+      // the session's max cumulative total; do NOT assume the per-field record totals
+      // equal that value in general (they equal the sum of per-field maxima, which
+      // coincides with the max cumulative total when every field peaks at the final
+      // snapshot — the common monotonic case the fixtures pin).
+      if (cur.total <= hwm.total) continue; // trim / replay / duplicate: no new usage
+      const d = {
+        input: Math.max(0, cur.input - hwm.input),
+        cached: Math.max(0, cur.cached - hwm.cached),
+        output: Math.max(0, cur.output - hwm.output),
+        reasoning: Math.max(0, cur.reasoning - hwm.reasoning),
+        total: cur.total - hwm.total,
+      };
+      hwm = {
+        input: Math.max(hwm.input, cur.input),
+        cached: Math.max(hwm.cached, cur.cached),
+        output: Math.max(hwm.output, cur.output),
+        reasoning: Math.max(hwm.reasoning, cur.reasoning),
+        total: cur.total, // gated above: cur.total > hwm.total, so this is the new max
+      };
 
       records.push({
         tool: "codex",
