@@ -10,6 +10,9 @@ import {
 const fixture = fileURLToPath(
   new URL("./__fixtures__/claude-messages.jsonl", import.meta.url),
 );
+const splitUsageFixture = fileURLToPath(
+  new URL("./__fixtures__/claude-split-usage.jsonl", import.meta.url),
+);
 
 describe("parseClaudeMessages", () => {
   it("merges the split message.id turn (thinking/text/tool_use) into ONE assistant message with tokens counted once", () => {
@@ -99,6 +102,21 @@ describe("parseClaudeMessages", () => {
       role: "assistant",
       text: "You're welcome.",
       tokens: 8, // 5 + 3
+    });
+  });
+});
+
+describe("parseClaudeMessages split-usage last-wins", () => {
+  it("merges a split turn whose usage GROWS across lines using the FINAL complete usage, counted once", () => {
+    const messages = parseClaudeMessages(splitUsageFixture);
+    // The three msg_g lines (thinking / text / tool_use) collapse to ONE message.
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      role: "assistant",
+      text: "Partial reply.",
+      toolUses: ["Bash"],
+      // FINAL line usage 10 + 20 + 30 + 40 = 100, not the intermediate 35 or a sum.
+      tokens: 100,
     });
   });
 });

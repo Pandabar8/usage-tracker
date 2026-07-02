@@ -39,6 +39,9 @@ describe("parseClaudeFile", () => {
 const compactionFixture = fileURLToPath(
   new URL("./__fixtures__/claude-messages.jsonl", import.meta.url),
 );
+const splitUsageFixture = fileURLToPath(
+  new URL("./__fixtures__/claude-split-usage.jsonl", import.meta.url),
+);
 
 describe("parseClaudeFile session meta", () => {
   it("counts turns, tool calls, and compaction during the parse pass", () => {
@@ -79,5 +82,21 @@ describe("parseClaudeFile session meta", () => {
     // (100 + 20 + 15 + 30 + 5). The un-deduped per-line parser would sum 370
     // (100 counted three times), which is the pre-existing over-count.
     expect(records.reduce((acc, r) => acc + r.inputTokens, 0)).toBe(170);
+  });
+
+  it("records the FINAL complete usage of a split turn whose usage grows across lines", () => {
+    const { records, sessions } = parseClaudeFile(splitUsageFixture);
+    // One record per message.id, carrying the FINAL (complete) usage — not an
+    // intermediate line's partial usage, and not a sum of the repeated lines.
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      sessionId: "g1",
+      model: "claude-opus-4-8",
+      inputTokens: 10,
+      outputTokens: 20,
+      cacheWriteTokens: 30,
+      cacheReadTokens: 40,
+    });
+    expect(sessions![0]).toMatchObject({ turns: 1, toolCalls: 1 });
   });
 });
