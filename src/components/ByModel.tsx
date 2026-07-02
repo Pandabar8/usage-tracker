@@ -15,23 +15,37 @@ export default function ByModel({ data }: { data: Rollups }) {
     tokens: m.tokens,
   }));
   return (
-    <section className="rounded-xl bg-neutral-900 p-4">
-      <h2 className="text-lg font-medium mb-4">By model</h2>
+    <div className="card">
+      <h3>By model</h3>
+      <p className="hint">tokens per model</p>
       <ResponsiveContainer
         width="100%"
-        height={Math.max(120, rows.length * 44)}
+        height={Math.max(120, rows.length * 40)}
       >
         <BarChart
           data={rows}
           layout="vertical"
           margin={{ left: 24, right: 24 }}
         >
-          <XAxis type="number" stroke="#9ca3af" />
-          <YAxis type="category" dataKey="name" width={180} stroke="#9ca3af" />
-          <Tooltip />
-          <Bar dataKey="tokens" fill="#60a5fa" radius={4} />
+          <XAxis type="number" stroke="#5c6675" fontSize={10} />
+          <YAxis
+            type="category"
+            dataKey="name"
+            width={170}
+            stroke="#98a2b3"
+            fontSize={11}
+          />
+          <Tooltip
+            contentStyle={{
+              background: "#12151b",
+              border: "1px solid rgba(233,238,246,.13)",
+              borderRadius: 8,
+              color: "#e8ecf2",
+            }}
+          />
+          <Bar dataKey="tokens" fill="#e88a4e" radius={4} />
         </BarChart>
       </ResponsiveContainer>
-    </section>
+    </div>
   );
 }
