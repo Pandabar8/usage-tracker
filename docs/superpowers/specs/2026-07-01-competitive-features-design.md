@@ -207,7 +207,7 @@ Canonical-pinned Vitest for every new module, asserting against literals (not th
 - `settings.test.ts` — retention read; read-modify-write preserves other keys.
 - search match function — unit test over fixtures.
 
-New fixtures live under `src/lib/parsers/__fixtures__/` alongside the existing ones and mirror real data shape (hundreds-of-lines files, not single-record stubs).
+New fixtures live under `src/lib/parsers/__fixtures__/` alongside the existing ones and are real-derived, covering every real line-type variety (multi-session rollouts, split-`message.id` turns, injected/synthetic context, compaction markers), not single-record stubs. Structural fidelity, not raw line count, is the bar.
 
 ## Phasing
 
