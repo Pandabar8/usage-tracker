@@ -3,16 +3,21 @@ import Layout from '../layouts/Layout.astro';
 import OverviewBoard from '../components/OverviewBoard.tsx';
 import { scan } from '../lib/scan';
 import { applyFilters } from '../lib/filters';
-import { aggregate, claudeWindows } from '../lib/aggregate';
+import { aggregate, claudeWindows, earliestClaudeTimestamp } from '../lib/aggregate';
 import { peakHours, calendarGrid } from '../lib/charts';
 import { defaultPricing } from '../lib/pricing';
 import { buildForecast } from '../lib/forecast';
 import { buildTips } from '../lib/tips';
+import { getRetention, isRetentionRisky } from '../lib/settings';
 
 export const prerender = false;
 
 const now = Date.now();
 const { records, codexQuota } = scan();
+// Coverage note reflects the true on-disk earliest Claude record (unfiltered),
+// plus whether the retention window is now long enough to stop further loss.
+const claudeStart = earliestClaudeTimestamp(records);
+const retentionProtected = !isRetentionRisky(getRetention());
 // Windows, forecast, tips reflect current account state (unfiltered).
 const windows = claudeWindows(records, now);
 const forecast = buildForecast(records, codexQuota, now);
@@ -28,5 +33,9 @@ const initial = {
 };
 ---
 <Layout>
-  <OverviewBoard client:load initial={initial} />
+  <OverviewBoard
+    client:load
+    initial={initial}
+    coverage={{ claudeStart, protected: retentionProtected }}
+  />
 </Layout>

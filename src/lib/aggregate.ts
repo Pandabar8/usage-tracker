@@ -40,6 +40,20 @@ export function claudeWindows(
   };
 }
 
+// Earliest Claude record timestamp on disk (ISO string), or null when there are
+// no Claude records. Drives the retention-coverage note: Claude Code's default
+// 30-day cleanup purges older history, so the minimum Claude timestamp is the
+// true start of the visible data, not the account's real first use. ISO 8601
+// strings compare correctly lexicographically, matching aggregate()'s dateRange.
+export function earliestClaudeTimestamp(records: UsageRecord[]): string | null {
+  let min: string | null = null;
+  for (const r of records) {
+    if (r.tool !== "claude" || !r.timestamp) continue;
+    if (min === null || r.timestamp < min) min = r.timestamp;
+  }
+  return min;
+}
+
 export interface ToolTotal {
   tokens: number;
   cost: number;

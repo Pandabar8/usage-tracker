@@ -22,7 +22,21 @@ function fmtRange(start: string | null, end: string | null): string {
   return `${start.slice(0, 10)} → ${end.slice(0, 10)}`;
 }
 
-export default function OverviewBoard({ initial }: { initial: BoardData }) {
+// On-disk coverage of Claude history. `claudeStart` is the earliest Claude
+// record timestamp (null when there are no Claude records); `protected` is true
+// once the retention window has been raised past the risky default.
+interface Coverage {
+  claudeStart: string | null;
+  protected: boolean;
+}
+
+export default function OverviewBoard({
+  initial,
+  coverage,
+}: {
+  initial: BoardData;
+  coverage: Coverage;
+}) {
   const [data, setData] = useState<BoardData>(initial);
   const [loading, setLoading] = useState(false);
 
@@ -76,6 +90,22 @@ export default function OverviewBoard({ initial }: { initial: BoardData }) {
           {loading ? "Loading…" : "Refresh"}
         </button>
       </div>
+
+      {coverage.claudeStart && (
+        <p
+          className="note"
+          style={{ marginTop: 0, marginBottom: 16, color: "var(--muted)" }}
+        >
+          Claude data from{" "}
+          <span className="mono" style={{ color: "var(--faint)" }}>
+            {coverage.claudeStart.slice(0, 10)}
+          </span>{" "}
+          — earlier sessions were purged by Claude Code's 30-day retention
+          {coverage.protected
+            ? " (now protected)."
+            : ". Raise the window in Settings to prevent further loss."}
+        </p>
+      )}
 
       <Overview data={data} />
 
