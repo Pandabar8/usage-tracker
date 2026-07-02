@@ -9,6 +9,9 @@ const fixture = fileURLToPath(
 const multiFixture = fileURLToPath(
   new URL("./__fixtures__/codex-multi-session.jsonl", import.meta.url),
 );
+const compactionFixture = fileURLToPath(
+  new URL("./__fixtures__/codex-compaction.jsonl", import.meta.url),
+);
 const ID_A = "019e39b9-0000-7000-a000-0000000000a1";
 const ID_B = "019e2f27-0000-7000-a000-0000000000b2";
 
@@ -95,6 +98,23 @@ describe("parseCodexMessages", () => {
     );
     expect(isSyntheticCodexContext("Add a test for the parser.")).toBe(false);
     expect(isSyntheticCodexContext("Now run it.")).toBe(false);
+  });
+});
+
+describe("parseCodexMessages Codex compaction", () => {
+  it("never surfaces the compacted replacement_history as a prompt", () => {
+    const messages = parseCodexMessages(compactionFixture, "cc");
+    // Two real user turns + two real assistant turns; the compacted /
+    // context_compacted events add nothing.
+    expect(messages).toHaveLength(4);
+    const allText = messages.map((m) => m.text).join("\n");
+    expect(allText).not.toContain("COMPACTED_HISTORY_SHOULD_NOT_SURFACE");
+    expect(messages.map((m) => m.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+      "assistant",
+    ]);
   });
 });
 

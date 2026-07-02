@@ -114,6 +114,9 @@ const codexMessages = fileURLToPath(
 const codexMulti = fileURLToPath(
   new URL("./__fixtures__/codex-multi-session.jsonl", import.meta.url),
 );
+const codexCompaction = fileURLToPath(
+  new URL("./__fixtures__/codex-compaction.jsonl", import.meta.url),
+);
 
 describe("parseCodexFile session meta", () => {
   it("counts assistant turns, function calls, and models during the parse pass", () => {
@@ -190,6 +193,22 @@ describe("parseCodexFile across a multi-session rollout", () => {
       cacheWriteTokens: 0,
       cacheReadTokens: 300,
       reasoningTokens: 0,
+    });
+  });
+});
+
+describe("parseCodexFile Codex compaction (v1: intentionally no compaction field)", () => {
+  it("ignores compacted / context_compacted events and never sets a compaction field", () => {
+    const { sessions } = parseCodexFile(codexCompaction);
+    expect(sessions).toHaveLength(1);
+    expect(sessions![0].compaction).toBeUndefined();
+    // Turns are the two real assistant turns; the compacted line's
+    // replacement_history does NOT inflate the count.
+    expect(sessions![0]).toMatchObject({
+      sessionId: "cc",
+      tool: "codex",
+      turns: 2,
+      toolCalls: 1,
     });
   });
 });

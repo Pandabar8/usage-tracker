@@ -1,0 +1,11 @@
+{"timestamp":"2026-06-13T09:00:00.000Z","type":"session_meta","payload":{"id":"cc","cwd":"/Users/me/ProjX","cli_version":"0.137.0","source":"cli"}}
+{"timestamp":"2026-06-13T09:00:01.000Z","type":"turn_context","payload":{"cwd":"/Users/me/ProjX","model":"gpt-5.3-codex","reasoning_effort":"medium"}}
+{"timestamp":"2026-06-13T09:00:02.000Z","type":"event_msg","payload":{"type":"user_message","message":"Do a big task.","images":[]}}
+{"timestamp":"2026-06-13T09:00:03.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"ls\"]}","call_id":"call_c1"}}
+{"timestamp":"2026-06-13T09:00:04.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Working on it."}]}}
+{"timestamp":"2026-06-13T09:00:05.000Z","type":"compacted","payload":{"message":"","replacement_history":[{"type":"message","role":"user","content":[{"type":"input_text","text":"COMPACTED_HISTORY_SHOULD_NOT_SURFACE"}]}]}}
+{"timestamp":"2026-06-13T09:00:06.000Z","type":"event_msg","payload":{"type":"context_compacted"}}
+{"timestamp":"2026-06-13T09:00:07.000Z","type":"event_msg","payload":{"type":"user_message","message":"Continue please.","images":[]}}
+{"timestamp":"2026-06-13T09:00:08.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Done."}]}}
+{"timestamp":"2026-06-13T09:00:09.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":500,"cached_input_tokens":0,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":550},"last_token_usage":{"input_tokens":500,"cached_input_tokens":0,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":550}}}}
+{ this line is not valid json

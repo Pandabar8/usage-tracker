@@ -41,6 +41,17 @@ export function isSyntheticCodexContext(text: string): boolean {
   return SYNTHETIC_CODEX_CONTEXT_MARKERS.some((m) => t.startsWith(m));
 }
 
+// Codex compaction scope (v1 decision). Real Codex rollouts DO emit compaction
+// events — a top-level `{"type":"compacted","payload":{...,"replacement_history":[...]}}`
+// line and an `{"type":"event_msg","payload":{"type":"context_compacted"}}` line —
+// so "Codex has no compaction" is not literally true. v1 intentionally does NOT
+// surface Codex compaction: unlike Claude it carries no tokens-saved figure and no
+// per-turn full/micro marker semantics, so a Codex `compaction` field would be a
+// bare, non-comparable count. Both Codex parsers therefore leave `SessionMeta`
+// without a `compaction` field, and the top-level `compacted` line is ignored (its
+// `replacement_history` messages never surface as prompts). A Codex-only compaction
+// count (no tokens-saved) is a noted future enhancement.
+
 // A single Codex rollout can hold MULTIPLE distinct session ids (e.g. a fork that
 // replays a parent session's history). `parseCodexMessages` returns ONLY the
 // messages belonging to `sessionId`: it tracks the active session id (the id of
