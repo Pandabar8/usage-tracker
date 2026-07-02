@@ -1,0 +1,31 @@
+---
+import Layout from '../layouts/Layout.astro';
+import CostsBoard from '../components/CostsBoard.tsx';
+import { scan } from '../lib/scan';
+import { applyFilters } from '../lib/filters';
+import { aggregate, claudeWindows } from '../lib/aggregate';
+import { peakHours, calendarGrid } from '../lib/charts';
+import { defaultPricing } from '../lib/pricing';
+import { buildForecast } from '../lib/forecast';
+import { buildTips } from '../lib/tips';
+
+export const prerender = false;
+
+const now = Date.now();
+const { records, codexQuota } = scan();
+const windows = claudeWindows(records, now);
+const forecast = buildForecast(records, codexQuota, now);
+const tips = buildTips(records, forecast, defaultPricing);
+const filtered = applyFilters(records, Astro.url.searchParams);
+const rollups = aggregate(filtered, codexQuota, defaultPricing, windows);
+const initial = {
+  ...rollups,
+  forecast,
+  tips,
+  peakHours: peakHours(filtered),
+  calendar: calendarGrid(rollups.byDay, now),
+};
+---
+<Layout title="Costs">
+  <CostsBoard client:load initial={initial} />
+</Layout>
