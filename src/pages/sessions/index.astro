@@ -1,5 +1,6 @@
 ---
 import Layout from '../../layouts/Layout.astro';
+import SessionSearch from '../../components/SessionSearch.tsx';
 import SessionsList from '../../components/SessionsList.tsx';
 import { scan } from '../../lib/scan';
 import { groupSessions } from '../../lib/sessions';
@@ -9,7 +10,9 @@ export const prerender = false;
 
 const { records, sessionMeta } = scan();
 const sessions = groupSessions(records, sessionMeta, defaultPricing);
+const q = Astro.url.searchParams.get('q') ?? '';
 ---
 <Layout title="Sessions">
+  <SessionSearch client:load initialQuery={q} />
   <SessionsList client:load initial={sessions} />
 </Layout>
