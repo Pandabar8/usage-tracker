@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scan } from "./scan";
 import { parseClaudeFile } from "./parsers/claude";
-import { parseFileCached, clearCache } from "./cache";
+import { parseFileCached, clearCache, cacheSize } from "./cache";
 import type { UsageRecord } from "./normalize";
 import { totalTokens } from "./normalize";
 
@@ -125,6 +125,25 @@ describe("parseFileCached", () => {
     utimesSync(f, new Date(), new Date(Date.now() + 5000)); // bump mtime
     parseFileCached(f, counting);
     expect(calls).toBe(2);
+  });
+
+  it("re-parses when only the file size changes with mtime pinned equal", () => {
+    const f = join(claudeDir, "sz.jsonl");
+    const fixed = new Date("2026-06-01T00:00:00.000Z");
+    writeFileSync(f, claudeLine);
+    utimesSync(f, fixed, fixed);
+    let calls = 0;
+    const counting = (p: string) => {
+      calls++;
+      return parseClaudeFile(p);
+    };
+    parseFileCached(f, counting);
+    expect(calls).toBe(1);
+    // append so the byte length grows, then force the SAME mtime back
+    writeFileSync(f, claudeLine + "\n" + claudeLine);
+    utimesSync(f, fixed, fixed);
+    parseFileCached(f, counting);
+    expect(calls).toBe(2); // size changed → re-parse despite equal mtime
   });
 });
 
@@ -578,5 +597,37 @@ describe("scan session meta and index", () => {
     expect(codex).toHaveLength(1); // only the winning file's single record survives
     expect(codex.every((r) => r.project === "ProjEarly")).toBe(true); // parent attribution kept
     expect(warnCalled).toBe(true); // comparable-maxima ambiguity is logged, not silent
+  });
+});
+
+describe("scan cache lifecycle", () => {
+  it("evicts cache entries for files deleted between scans", () => {
+    mkdirSync(join(claudeDir, "p"), { recursive: true });
+    const a = join(claudeDir, "p", "a.jsonl");
+    const b = join(claudeDir, "p", "b.jsonl");
+    writeFileSync(a, claudeLine);
+    writeFileSync(b, claudeLine);
+    const first = scan({ claudeDir, codexDir });
+    expect(first.records).toHaveLength(2);
+    expect(cacheSize()).toBe(2);
+
+    rmSync(b);
+    const second = scan({ claudeDir, codexDir });
+    expect(second.records).toHaveLength(1);
+    expect(cacheSize()).toBe(1); // deleted file evicted, not just ignored
+  });
+
+  it("produces output identical to a cold scan when fully warm", () => {
+    mkdirSync(join(claudeDir, "p"), { recursive: true });
+    writeFileSync(join(claudeDir, "p", "a.jsonl"), claudeLine);
+    mkdirSync(join(codexDir, "2026", "06", "02"), { recursive: true });
+    writeFileSync(join(codexDir, "2026", "06", "02", "r.jsonl"), codexLines);
+
+    const cold = scan({ claudeDir, codexDir });
+    const warm = scan({ claudeDir, codexDir }); // every parse a cache hit
+    expect(warm.records).toEqual(cold.records);
+    expect([...warm.sessionMeta]).toEqual([...cold.sessionMeta]);
+    expect([...warm.sessionIndex]).toEqual([...cold.sessionIndex]);
+    expect(warm.codexQuota).toEqual(cold.codexQuota);
   });
 });
