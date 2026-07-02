@@ -73,6 +73,7 @@ export interface Rollups {
   dateRange: { start: string | null; end: string | null };
   codexQuota: RateLimitSnapshot | null;
   claudeWindows: ClaudeWindows;
+  cacheHitRate: number;
 }
 
 export interface DashboardData extends Rollups {
@@ -93,10 +94,14 @@ export function aggregate(
   const models = new Map<string, ModelPoint>();
   let start: string | null = null;
   let end: string | null = null;
+  let inputSum = 0;
+  let cacheReadSum = 0;
 
   for (const r of records) {
     const tokens = totalTokens(r);
     const c = cost(r, pricing);
+    inputSum += r.inputTokens;
+    cacheReadSum += r.cacheReadTokens;
 
     const toolTotal = r.tool === "claude" ? claude : codex;
     toolTotal.tokens += tokens;
@@ -167,6 +172,7 @@ export function aggregate(
     dateRange: { start, end },
     codexQuota,
     claudeWindows: windows,
+    cacheHitRate: cacheHitRate(inputSum, cacheReadSum),
   };
 }
 

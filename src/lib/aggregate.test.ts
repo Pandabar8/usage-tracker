@@ -108,6 +108,11 @@ describe("aggregate", () => {
       end: "2026-06-02T11:00:00.000Z",
     });
   });
+
+  it("exposes a global cache-hit rate over all records", () => {
+    // cacheRead 1100 / (input 310 + cacheRead 1100) = 1100/1410
+    expect(r.cacheHitRate).toBeCloseTo(0.7801418439716312, 12);
+  });
 });
 
 describe("claudeWindows", () => {
