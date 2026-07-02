@@ -1,7 +1,11 @@
 // src/lib/parsers/codex-messages.test.ts
 import { describe, it, expect } from "vitest";
 import { fileURLToPath } from "node:url";
-import { parseCodexMessages, isSyntheticCodexContext } from "./codex-messages";
+import {
+  parseCodexMessages,
+  isSyntheticCodexContext,
+  codexToolName,
+} from "./codex-messages";
 
 const fixture = fileURLToPath(
   new URL("./__fixtures__/codex-messages.jsonl", import.meta.url),
@@ -14,6 +18,9 @@ const compactionFixture = fileURLToPath(
 );
 const repeatPromptFixture = fileURLToPath(
   new URL("./__fixtures__/codex-repeat-prompt.jsonl", import.meta.url),
+);
+const toolsFixture = fileURLToPath(
+  new URL("./__fixtures__/codex-tools.jsonl", import.meta.url),
 );
 const ID_A = "019e39b9-0000-7000-a000-0000000000a1";
 const ID_B = "019e2f27-0000-7000-a000-0000000000b2";
@@ -101,6 +108,56 @@ describe("parseCodexMessages", () => {
     );
     expect(isSyntheticCodexContext("Add a test for the parser.")).toBe(false);
     expect(isSyntheticCodexContext("Now run it.")).toBe(false);
+  });
+});
+
+describe("codexToolName", () => {
+  it("labels every real Codex tool payload type and ignores non-tool payloads", () => {
+    expect(codexToolName({ type: "function_call", name: "shell" })).toBe(
+      "shell",
+    );
+    expect(
+      codexToolName({ type: "custom_tool_call", name: "apply_patch" }),
+    ).toBe("apply_patch");
+    expect(codexToolName({ type: "web_search_call" })).toBe("web_search");
+    expect(codexToolName({ type: "tool_search_call" })).toBe("tool_search");
+    expect(
+      codexToolName({
+        type: "mcp_tool_call_end",
+        invocation: { server: "context7", tool: "resolve_library_id" },
+      }),
+    ).toBe("context7.resolve_library_id");
+    expect(codexToolName({ type: "patch_apply_end" })).toBe("apply_patch");
+    expect(codexToolName({ type: "reasoning" })).toBeNull();
+    expect(codexToolName({ type: "message", role: "assistant" })).toBeNull();
+    expect(codexToolName(null)).toBeNull();
+  });
+});
+
+describe("parseCodexMessages tool coverage", () => {
+  it("collects every tool type into the assistant's toolUses and dedups completion events by call_id", () => {
+    const messages = parseCodexMessages(toolsFixture, "ct");
+    const assistant = messages.find((m) => m.role === "assistant")!;
+    // All distinct tool types surface on the turn's assistant.
+    for (const name of [
+      "shell",
+      "apply_patch",
+      "web_search",
+      "tool_search",
+      "resolve_library_id",
+      "srv.solo_tool",
+    ]) {
+      expect(assistant.toolUses).toContain(name);
+    }
+    // The mcp_tool_call_end for call_mcp and the patch_apply_end for call_patch
+    // duplicate their response_item tool call by call_id, so they are NOT counted
+    // again: resolve_library_id appears once (its function_call), and the raw
+    // toolUses length is 8 (call_1, call_2, web_search, call_3, call_mcp,
+    // call_patch, call_solomcp, call_solopatch) — NOT 10.
+    expect(
+      assistant.toolUses.filter((t) => t === "resolve_library_id"),
+    ).toHaveLength(1);
+    expect(assistant.toolUses).toHaveLength(8);
   });
 });
 

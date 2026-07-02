@@ -1,0 +1,17 @@
+{"timestamp":"2026-06-15T09:00:00.000Z","type":"session_meta","payload":{"id":"ct","cwd":"/Users/me/ProjX","cli_version":"0.137.0","source":"cli"}}
+{"timestamp":"2026-06-15T09:00:01.000Z","type":"turn_context","payload":{"cwd":"/Users/me/ProjX","model":"gpt-5.3-codex","reasoning_effort":"medium"}}
+{"timestamp":"2026-06-15T09:00:02.000Z","type":"event_msg","payload":{"type":"user_message","message":"Use every tool.","images":[]}}
+{"timestamp":"2026-06-15T09:00:03.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"ls\"]}","call_id":"call_1"}}
+{"timestamp":"2026-06-15T09:00:04.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"file.ts"}}
+{"timestamp":"2026-06-15T09:00:05.000Z","type":"response_item","payload":{"type":"custom_tool_call","status":"completed","name":"apply_patch","input":"*** Begin Patch","call_id":"call_2"}}
+{"timestamp":"2026-06-15T09:00:06.000Z","type":"response_item","payload":{"type":"web_search_call","status":"completed","action":{"type":"search","query":"astro ssr"}}}
+{"timestamp":"2026-06-15T09:00:07.000Z","type":"response_item","payload":{"type":"tool_search_call","call_id":"call_3","status":"completed","execution":"client","arguments":{"query":"github issues","limit":5}}}
+{"timestamp":"2026-06-15T09:00:08.000Z","type":"response_item","payload":{"type":"function_call","name":"resolve_library_id","namespace":"mcp__context7__","arguments":"{\"libraryName\":\"astro\"}","call_id":"call_mcp"}}
+{"timestamp":"2026-06-15T09:00:09.000Z","type":"event_msg","payload":{"type":"mcp_tool_call_end","call_id":"call_mcp","invocation":{"server":"context7","tool":"resolve_library_id","arguments":{}},"duration":{"secs":1,"nanos":0},"result":{"Ok":{"content":[]}}}}
+{"timestamp":"2026-06-15T09:00:10.000Z","type":"response_item","payload":{"type":"custom_tool_call","status":"completed","name":"apply_patch","input":"*** Begin Patch 2","call_id":"call_patch"}}
+{"timestamp":"2026-06-15T09:00:11.000Z","type":"event_msg","payload":{"type":"patch_apply_end","call_id":"call_patch","stdout":"done","stderr":"","success":true,"changes":{}}}
+{"timestamp":"2026-06-15T09:00:12.000Z","type":"event_msg","payload":{"type":"mcp_tool_call_end","call_id":"call_solomcp","invocation":{"server":"srv","tool":"solo_tool","arguments":{}},"duration":{"secs":0,"nanos":1},"result":{"Ok":{"content":[]}}}}
+{"timestamp":"2026-06-15T09:00:13.000Z","type":"event_msg","payload":{"type":"patch_apply_end","call_id":"call_solopatch","stdout":"","stderr":"","success":true,"changes":{}}}
+{"timestamp":"2026-06-15T09:00:14.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Used every tool."}]}}
+{"timestamp":"2026-06-15T09:00:15.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":700,"cached_input_tokens":0,"output_tokens":70,"reasoning_output_tokens":0,"total_tokens":770},"last_token_usage":{"input_tokens":700,"cached_input_tokens":0,"output_tokens":70,"reasoning_output_tokens":0,"total_tokens":770}}}}
+{ this line is not valid json

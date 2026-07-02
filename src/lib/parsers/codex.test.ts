@@ -117,6 +117,9 @@ const codexMulti = fileURLToPath(
 const codexCompaction = fileURLToPath(
   new URL("./__fixtures__/codex-compaction.jsonl", import.meta.url),
 );
+const codexTools = fileURLToPath(
+  new URL("./__fixtures__/codex-tools.jsonl", import.meta.url),
+);
 
 describe("parseCodexFile session meta", () => {
   it("counts assistant turns, function calls, and models during the parse pass", () => {
@@ -193,6 +196,23 @@ describe("parseCodexFile across a multi-session rollout", () => {
       cacheWriteTokens: 0,
       cacheReadTokens: 300,
       reasoningTokens: 0,
+    });
+  });
+});
+
+describe("parseCodexFile tool-call coverage", () => {
+  it("counts every real Codex tool payload type, deduping completion events by call_id", () => {
+    const { sessions } = parseCodexFile(codexTools);
+    expect(sessions).toHaveLength(1);
+    // shell + apply_patch + web_search + tool_search + resolve_library_id
+    // (mcp_tool_call_end for the same call_id deduped) + apply_patch (patch_apply_end
+    // for the same call_id deduped) + srv.solo_tool (event-only) + apply_patch
+    // (event-only) = 8 raw tool calls, NOT 10.
+    expect(sessions![0]).toMatchObject({
+      sessionId: "ct",
+      tool: "codex",
+      turns: 1,
+      toolCalls: 8,
     });
   });
 });

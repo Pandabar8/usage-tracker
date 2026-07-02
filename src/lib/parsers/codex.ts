@@ -8,7 +8,11 @@ import {
   type SessionMeta,
   type UsageRecord,
 } from "../normalize";
-import { extractCodexText, isSyntheticCodexContext } from "./codex-messages";
+import {
+  codexToolName,
+  extractCodexText,
+  isSyntheticCodexContext,
+} from "./codex-messages";
 
 function toWindow(w: any): RateLimitWindow | null {
   if (!w || typeof w.used_percent !== "number") return null;
@@ -119,6 +123,20 @@ export function parseCodexFile(path: string): ParsedFile {
     sawAssistant = false;
   };
 
+  // Raw tool-call count across ALL Codex tool payload types, deduped file-wide by
+  // call_id so an event-side completion (mcp_tool_call_end / patch_apply_end) does
+  // not re-count the response_item tool call it mirrors.
+  const seenToolCalls = new Set<string>();
+  const countTool = (p: any): boolean => {
+    const name = codexToolName(p);
+    if (!name) return false;
+    const cid = typeof p.call_id === "string" ? p.call_id : "";
+    if (cid && seenToolCalls.has(cid)) return true; // already counted from its other surface
+    if (cid) seenToolCalls.add(cid);
+    if (activeId) accFor(activeId).toolCalls += 1;
+    return true;
+  };
+
   const lines = readFileSync(path, "utf8").split("\n");
 
   for (const line of lines) {
@@ -163,11 +181,18 @@ export function parseCodexFile(path: string): ParsedFile {
       continue;
     }
 
+    // Tool calls on either surface (response_item item or event-side completion),
+    // deduped by call_id, mirror parseCodexMessages so toolCalls tracks toolUses.
+    if (
+      (obj.type === "response_item" || obj.type === "event_msg") &&
+      countTool(obj.payload ?? {})
+    ) {
+      continue;
+    }
+
     if (obj.type === "response_item") {
       const pt = obj.payload?.type;
-      if (pt === "function_call") {
-        if (activeId) accFor(activeId).toolCalls += 1;
-      } else if (pt === "message" && obj.payload?.role === "assistant") {
+      if (pt === "message" && obj.payload?.role === "assistant") {
         if (activeId) accFor(activeId).turns += 1;
         sawAssistant = true;
         hasUserInTurn = false; // the model responded; the turn's user echo window closed

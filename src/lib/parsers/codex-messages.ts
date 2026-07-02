@@ -41,6 +41,41 @@ export function isSyntheticCodexContext(text: string): boolean {
   return SYNTHETIC_CODEX_CONTEXT_MARKERS.some((m) => t.startsWith(m));
 }
 
+// Names every real Codex tool payload so counts/badges cover more than plain
+// `function_call`. Tool calls arrive on TWO surfaces: a `response_item`
+// (function_call, custom_tool_call, web_search_call, tool_search_call) and an
+// event-side completion (mcp_tool_call_end, patch_apply_end). In real rollouts an
+// MCP call emits BOTH a function_call and an mcp_tool_call_end that share a
+// `call_id`, and an apply_patch emits BOTH a custom_tool_call and a
+// patch_apply_end sharing a `call_id`; callers therefore dedup by `call_id` so the
+// completion event does not double-count its own response_item tool call. Returns
+// null for non-tool payloads. Single source of truth — `codex.ts` reuses this.
+export function codexToolName(p: any): string | null {
+  if (!p || typeof p.type !== "string") return null;
+  switch (p.type) {
+    case "function_call":
+    case "custom_tool_call":
+      return typeof p.name === "string" && p.name ? p.name : null;
+    case "web_search_call":
+      return "web_search";
+    case "tool_search_call":
+      return "tool_search";
+    case "mcp_tool_call_end": {
+      const inv = p.invocation;
+      if (inv && typeof inv.tool === "string" && inv.tool) {
+        return typeof inv.server === "string" && inv.server
+          ? `${inv.server}.${inv.tool}`
+          : inv.tool;
+      }
+      return "mcp_tool";
+    }
+    case "patch_apply_end":
+      return "apply_patch";
+    default:
+      return null;
+  }
+}
+
 // Codex compaction scope (v1 decision). Real Codex rollouts DO emit compaction
 // events — a top-level `{"type":"compacted","payload":{...,"replacement_history":[...]}}`
 // line and an `{"type":"event_msg","payload":{"type":"context_compacted"}}` line —
@@ -80,6 +115,18 @@ export function parseCodexMessages(path: string, sessionId: string): Message[] {
   let currentModel = "unknown";
   let pendingTools: string[] = [];
   let turnTokens: number | undefined;
+  // Deduped file-wide by call_id so an event-side completion (mcp_tool_call_end /
+  // patch_apply_end) does not re-count the response_item tool call it mirrors.
+  const seenToolCalls = new Set<string>();
+  const addTool = (p: any): boolean => {
+    const name = codexToolName(p);
+    if (!name) return false;
+    const cid = typeof p.call_id === "string" ? p.call_id : "";
+    if (cid && seenToolCalls.has(cid)) return true; // already counted from its other surface
+    if (cid) seenToolCalls.add(cid);
+    pendingTools.push(name);
+    return true;
+  };
   let lastUserText = "";
   // The response_item user copy mirrors an event_msg user_message ONLY within the
   // open turn, so the dedup is scoped to the turn: `hasUserInTurn` is set when a
@@ -159,6 +206,15 @@ export function parseCodexMessages(path: string, sessionId: string): Message[] {
       continue;
     }
 
+    // Tool calls on either surface (response_item item or event-side completion),
+    // deduped by call_id, attach to the assistant that closes the turn.
+    if (
+      (obj.type === "response_item" || obj.type === "event_msg") &&
+      addTool(p)
+    ) {
+      continue;
+    }
+
     if (obj.type === "event_msg" && p.type === "user_message") {
       openUserTurn(
         typeof p.message === "string" ? p.message : "",
@@ -188,11 +244,6 @@ export function parseCodexMessages(path: string, sessionId: string): Message[] {
         timestamp: String(obj.timestamp ?? ""),
       };
       hasUserInTurn = false; // the model responded; the turn's user echo window closed
-      continue;
-    }
-
-    if (obj.type === "response_item" && p.type === "function_call") {
-      if (typeof p.name === "string") pendingTools.push(p.name);
       continue;
     }
 
