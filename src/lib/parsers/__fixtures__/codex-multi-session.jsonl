@@ -1,0 +1,18 @@
+{"timestamp":"2026-06-11T09:00:00.000Z","type":"session_meta","payload":{"id":"019e39b9-0000-7000-a000-0000000000a1","forked_from_id":"019e2f27-0000-7000-a000-0000000000b2","cwd":"/Users/me/.codex/worktrees/ProjX","cli_version":"0.137.0","source":"fork"}}
+{"timestamp":"2026-06-11T09:00:01.000Z","type":"turn_context","payload":{"cwd":"/Users/me/.codex/worktrees/ProjX","model":"gpt-5.5","reasoning_effort":"high"}}
+{"timestamp":"2026-06-11T09:00:01.500Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n  <cwd>/Users/me/.codex/worktrees/ProjX</cwd>\n</environment_context>"}]}}
+{"timestamp":"2026-06-11T09:00:02.000Z","type":"event_msg","payload":{"type":"user_message","message":"Fix the failing test.","images":[]}}
+{"timestamp":"2026-06-11T09:00:02.500Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"Inspecting the failure."}]}}
+{"timestamp":"2026-06-11T09:00:03.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"npx\",\"vitest\"]}","call_id":"call_a1"}}
+{"timestamp":"2026-06-11T09:00:04.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_a1","output":"1 failing"}}
+{"timestamp":"2026-06-11T09:00:05.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":900,"cached_input_tokens":100,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1000},"last_token_usage":{"input_tokens":900,"cached_input_tokens":100,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1000}},"rate_limits":{"primary":{"used_percent":20,"window_minutes":300,"resets_at":1},"secondary":{"used_percent":5,"window_minutes":10080,"resets_at":2}}}}
+{"timestamp":"2026-06-11T09:00:05.500Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":900,"cached_input_tokens":100,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1000},"last_token_usage":{"input_tokens":0,"cached_input_tokens":0,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":0}}}}
+{"timestamp":"2026-06-11T09:00:06.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Fixed the test."}]}}
+{"timestamp":"2026-06-11T09:00:10.000Z","type":"session_meta","payload":{"id":"019e2f27-0000-7000-a000-0000000000b2","cwd":"/Users/me/ProjX","cli_version":"0.137.0","source":"cli"}}
+{"timestamp":"2026-06-11T09:00:11.000Z","type":"turn_context","payload":{"cwd":"/Users/me/ProjX","model":"gpt-5.3-codex","reasoning_effort":"medium"}}
+{"timestamp":"2026-06-11T09:00:12.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Now add docs."}]}}
+{"timestamp":"2026-06-11T09:00:13.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"ls\",\"docs\"]}","call_id":"call_b2"}}
+{"timestamp":"2026-06-11T09:00:14.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_b2","output":"README.md"}}
+{"timestamp":"2026-06-11T09:00:15.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1500,"cached_input_tokens":400,"output_tokens":100,"reasoning_output_tokens":0,"total_tokens":1600},"last_token_usage":{"input_tokens":500,"cached_input_tokens":300,"output_tokens":0,"reasoning_output_tokens":0,"total_tokens":600}}}}
+{"timestamp":"2026-06-11T09:00:16.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Docs added."}}
+{ this line is not valid json
