@@ -95,12 +95,14 @@ export function aggregate(
   let start: string | null = null;
   let end: string | null = null;
   let inputSum = 0;
+  let cacheWriteSum = 0;
   let cacheReadSum = 0;
 
   for (const r of records) {
     const tokens = totalTokens(r);
     const c = cost(r, pricing);
     inputSum += r.inputTokens;
+    cacheWriteSum += r.cacheWriteTokens;
     cacheReadSum += r.cacheReadTokens;
 
     const toolTotal = r.tool === "claude" ? claude : codex;
@@ -172,17 +174,19 @@ export function aggregate(
     dateRange: { start, end },
     codexQuota,
     claudeWindows: windows,
-    cacheHitRate: cacheHitRate(inputSum, cacheReadSum),
+    cacheHitRate: cacheHitRate(inputSum, cacheWriteSum, cacheReadSum),
   };
 }
 
-// Share of read-side tokens served from cache: cacheRead / (input + cacheRead).
-// Returns 0 when there were no read-side tokens (avoids divide-by-zero).
+// Share of read-side tokens served from cache: cacheRead / (input + cacheWrite +
+// cacheRead). Cache writes are billed as non-cached input, so they belong in the
+// denominator. Returns 0 when there were no read-side tokens (avoids /0).
 export function cacheHitRate(
   inputTokens: number,
+  cacheWriteTokens: number,
   cacheReadTokens: number,
 ): number {
-  const denom = inputTokens + cacheReadTokens;
+  const denom = inputTokens + cacheWriteTokens + cacheReadTokens;
   return denom > 0 ? cacheReadTokens / denom : 0;
 }
 
@@ -265,7 +269,11 @@ export function modelStats(
       cost: a.cost,
       unpriced: a.unpriced,
       sessions,
-      cacheHitRate: cacheHitRate(a.inputTokens, a.cacheReadTokens),
+      cacheHitRate: cacheHitRate(
+        a.inputTokens,
+        a.cacheWriteTokens,
+        a.cacheReadTokens,
+      ),
       avgTokensPerSession: sessions > 0 ? a.totalTokens / sessions : 0,
       avgCostPerSession: sessions > 0 ? a.cost / sessions : 0,
     });

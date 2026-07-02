@@ -109,9 +109,10 @@ describe("aggregate", () => {
     });
   });
 
-  it("exposes a global cache-hit rate over all records", () => {
-    // cacheRead 1100 / (input 310 + cacheRead 1100) = 1100/1410
-    expect(r.cacheHitRate).toBeCloseTo(0.7801418439716312, 12);
+  it("exposes a global cache-hit rate over all records, cache-write in the denominator", () => {
+    // cacheRead 1100 / (input 310 + cacheWrite 200 + cacheRead 1100) = 1100/1610.
+    // Real anchor: 0.948 (was 0.972 while cache-write was excluded).
+    expect(r.cacheHitRate).toBeCloseTo(0.6832298136645962, 12);
   });
 });
 
@@ -173,13 +174,15 @@ const statsPricing: PricingTable = {
 };
 
 describe("cacheHitRate", () => {
-  it("computes the cache-read share of read-side tokens", () => {
-    expect(cacheHitRate(100, 300)).toBe(0.75); // 300 / (100 + 300)
-    expect(cacheHitRate(200, 800)).toBe(0.8); // 800 / 1000
+  it("computes cache-read share of read-side tokens, including cache-write", () => {
+    expect(cacheHitRate(100, 0, 300)).toBe(0.75); // 300 / (100 + 0 + 300)
+    expect(cacheHitRate(200, 0, 800)).toBe(0.8); // 800 / 1000
+    expect(cacheHitRate(100, 50, 300)).toBeCloseTo(0.6666666666666666, 12); // 300 / 450
   });
   it("returns 0 when there are no read-side tokens", () => {
-    expect(cacheHitRate(0, 0)).toBe(0);
-    expect(cacheHitRate(100, 0)).toBe(0);
+    expect(cacheHitRate(0, 0, 0)).toBe(0);
+    expect(cacheHitRate(100, 0, 0)).toBe(0);
+    expect(cacheHitRate(100, 50, 0)).toBe(0); // denom 150 but no cache reads
   });
 });
 
@@ -225,7 +228,7 @@ describe("modelStats", () => {
       unpriced: false,
     });
     expect(opus.cost).toBeCloseTo(0.003325, 10); // 3150/1e6 + 175/1e6
-    expect(opus.cacheHitRate).toBeCloseTo(0.7317073170731707, 12); // 300/410
+    expect(opus.cacheHitRate).toBeCloseTo(0.4918032786885246, 12); // 300 / (110 + 200 + 300)
     expect(opus.avgTokensPerSession).toBe(332.5); // 665 / 2
     expect(opus.avgCostPerSession).toBeCloseTo(0.0016625, 12);
   });

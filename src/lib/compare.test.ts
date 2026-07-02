@@ -66,9 +66,9 @@ describe("diffSessions", () => {
 
     const chr = row(rows, "cacheHitRate");
     expect(chr.kind).toBe("pct");
-    expect(chr.a).toBeCloseTo(0.7317073170731707, 12); // 300/410
-    expect(chr.b).toBe(0.8); // 800/1000
-    expect(chr.delta).toBeCloseTo(0.0682926829268293, 12);
+    expect(chr.a).toBeCloseTo(0.4918032786885246, 12); // 300 / (110 + 200 + 300)
+    expect(chr.b).toBe(0.8); // 800 / (200 + 0 + 800)
+    expect(chr.delta).toBeCloseTo(0.3081967213114754, 12); // 0.8 - 0.4918032786885246
   });
 
   it("treats a missing side as zeros and negates the present side", () => {
@@ -94,7 +94,7 @@ const mA: ModelStats = {
   cost: 0.003325,
   unpriced: false,
   sessions: 2,
-  cacheHitRate: 0.7317073170731707,
+  cacheHitRate: 0.4918032786885246, // 300 / (110 + 200 + 300)
   avgTokensPerSession: 332.5,
   avgCostPerSession: 0.0016625,
 };
@@ -129,7 +129,7 @@ describe("diffModels", () => {
 
     const chr = row(rows, "cacheHitRate");
     expect(chr.kind).toBe("pct");
-    expect(chr.delta).toBeCloseTo(0.0682926829268293, 12);
+    expect(chr.delta).toBeCloseTo(0.3081967213114754, 12); // 0.8 - 0.4918032786885246
 
     const avgCost = row(rows, "avgCostPerSession");
     expect(avgCost.kind).toBe("usd");

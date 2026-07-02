@@ -61,8 +61,16 @@ export function diffSessions(
     makeRow(
       "cacheHitRate",
       "Cache hit rate",
-      cacheHitRate(a?.tokens.input ?? 0, a?.tokens.cacheRead ?? 0),
-      cacheHitRate(b?.tokens.input ?? 0, b?.tokens.cacheRead ?? 0),
+      cacheHitRate(
+        a?.tokens.input ?? 0,
+        a?.tokens.cacheWrite ?? 0,
+        a?.tokens.cacheRead ?? 0,
+      ),
+      cacheHitRate(
+        b?.tokens.input ?? 0,
+        b?.tokens.cacheWrite ?? 0,
+        b?.tokens.cacheRead ?? 0,
+      ),
       "pct",
     ),
     makeRow("cost", "Cost (notional)", a?.cost ?? 0, b?.cost ?? 0, "usd"),
