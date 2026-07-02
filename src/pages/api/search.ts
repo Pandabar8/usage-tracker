@@ -10,15 +10,27 @@ import { searchMessages, type SearchResult } from "../../lib/search";
 
 export const prerender = false;
 
-// Bounds keep search cheap on a large history: at most SCAN_CAP sessions are
-// parsed per query, and at most RESULT_CAP sessions are returned. Sessions are
-// visited in groupSessions order so the caps keep a stable, freshest-first set.
-const SCAN_CAP = 500;
-const RESULT_CAP = 50;
-// Coarse total-work bound: cap the number of files parsed across ALL scanned
-// sessions. A session can reference many files, and a shared Codex file is parsed
-// once per session id it holds, so bounding sessions alone is not enough.
-const FILE_CAP = 4000;
+// Bounds keep search cheap on a large history:
+// - scanCap: at most this many sessions are parsed per query.
+// - resultCap: at most this many matching sessions are returned.
+// - fileCap: coarse total-work bound on files parsed across ALL scanned
+//   sessions. A session can reference many files, and a shared Codex file is
+//   parsed once per session id it holds, so bounding sessions alone is not
+//   enough.
+// Sessions are visited in groupSessions order so the caps keep a stable,
+// freshest-first set. Exposed as an overridable argument so the cap-enforcement
+// test can drive small, deterministic bounds.
+export interface SearchCaps {
+  scanCap: number;
+  resultCap: number;
+  fileCap: number;
+}
+
+export const DEFAULT_SEARCH_CAPS: SearchCaps = {
+  scanCap: 500,
+  resultCap: 50,
+  fileCap: 4000,
+};
 
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), {
@@ -26,9 +38,15 @@ const json = (body: unknown) =>
     headers: { "content-type": "application/json" },
   });
 
-export const GET: APIRoute = ({ url }) => {
-  const q = (url.searchParams.get("q") ?? "").trim();
-  if (!q) return json([]);
+// Bounded, tolerant scan across session files. Pure w.r.t. the request: it reads
+// the cached scan index, walks summaries freshest-first, and stops at whichever
+// cap binds first. Returns [] for a blank query.
+export function searchSessions(
+  q: string,
+  caps: SearchCaps = DEFAULT_SEARCH_CAPS,
+): SearchResult[] {
+  const query = q.trim();
+  if (!query) return [];
 
   const { records, sessionMeta, sessionIndex } = scan();
   const summaries = groupSessions(records, sessionMeta, defaultPricing);
@@ -38,9 +56,9 @@ export const GET: APIRoute = ({ url }) => {
   let filesParsed = 0;
   for (const s of summaries) {
     if (
-      scanned >= SCAN_CAP ||
-      results.length >= RESULT_CAP ||
-      filesParsed >= FILE_CAP
+      scanned >= caps.scanCap ||
+      results.length >= caps.resultCap ||
+      filesParsed >= caps.fileCap
     )
       break;
     const entry = sessionIndex.get(s.key);
@@ -52,7 +70,7 @@ export const GET: APIRoute = ({ url }) => {
     // single vanished/corrupt file drops only that file, not the whole session.
     const messages: Message[] = [];
     for (const file of entry.files) {
-      if (filesParsed >= FILE_CAP) break;
+      if (filesParsed >= caps.fileCap) break;
       filesParsed += 1;
       try {
         const parsed =
@@ -67,7 +85,7 @@ export const GET: APIRoute = ({ url }) => {
     if (messages.length === 0) continue; // every file was unreadable
     messages.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-    const hit = searchMessages(messages, q);
+    const hit = searchMessages(messages, query);
     if (hit) {
       results.push({
         key: s.key,
@@ -81,5 +99,11 @@ export const GET: APIRoute = ({ url }) => {
     }
   }
 
-  return json(results);
+  return results;
+}
+
+export const GET: APIRoute = ({ url }) => {
+  const q = (url.searchParams.get("q") ?? "").trim();
+  if (!q) return json([]);
+  return json(searchSessions(q));
 };
