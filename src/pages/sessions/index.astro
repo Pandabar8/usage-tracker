@@ -1,0 +1,15 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import SessionsList from '../../components/SessionsList.tsx';
+import { scan } from '../../lib/scan';
+import { groupSessions } from '../../lib/sessions';
+import { defaultPricing } from '../../lib/pricing';
+
+export const prerender = false;
+
+const { records, sessionMeta } = scan();
+const sessions = groupSessions(records, sessionMeta, defaultPricing);
+---
+<Layout title="Sessions">
+  <SessionsList client:load initial={sessions} />
+</Layout>
