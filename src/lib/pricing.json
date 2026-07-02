@@ -41,5 +41,13 @@
     "cacheWrite": 0,
     "cacheRead": 0.175
   },
-  "gpt-5-codex": { "input": 0, "output": 0, "cacheWrite": 0, "cacheRead": 0 }
+  "gpt-5-codex": { "input": 0, "output": 0, "cacheWrite": 0, "cacheRead": 0 },
+  "gpt-5.1-codex-max": {
+    "input": 1.25,
+    "output": 10,
+    "cacheWrite": 0,
+    "cacheRead": 0.125
+  },
+  "gpt-5.4": { "input": 2.5, "output": 15, "cacheWrite": 0, "cacheRead": 0.25 },
+  "gpt-5.5": { "input": 5, "output": 30, "cacheWrite": 0, "cacheRead": 0.5 }
 }
