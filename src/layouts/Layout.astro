@@ -1,7 +1,11 @@
 ---
 import '../styles/global.css';
+import Sidebar from '../components/Sidebar.tsx';
+import { scan } from '../lib/scan';
 interface Props { title?: string }
 const { title = 'Usage Tracker' } = Astro.props;
+const { codexQuota } = scan();
+const pathname = Astro.url.pathname;
 ---
 <html lang="en">
   <head>
@@ -9,17 +13,12 @@ const { title = 'Usage Tracker' } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
   </head>
-  <body class="bg-neutral-950 text-neutral-100 min-h-screen">
-    <main class="max-w-6xl mx-auto px-6 py-8 space-y-8">
-      <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-semibold">Usage Tracker</h1>
-        <nav class="flex gap-4 text-sm">
-          <a href="/" class="text-neutral-300 hover:text-white">Overview</a>
-          <a href="/sessions" class="text-neutral-300 hover:text-white">Sessions</a>
-          <a href="/compare" class="text-neutral-300 hover:text-white">Compare</a>
-        </nav>
-      </div>
-      <slot />
-    </main>
+  <body>
+    <div class="app">
+      <Sidebar client:load pathname={pathname} codexQuota={codexQuota} />
+      <main>
+        <slot />
+      </main>
+    </div>
   </body>
 </html>
